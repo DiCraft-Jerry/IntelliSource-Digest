@@ -253,6 +253,20 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
 }
 
 /**
+ * 过滤危险 URL 协议，防止 XSS
+ * @param {string} url
+ * @returns {string} 安全 URL 或空字符串
+ */
+function sanitizeUrl(url) {
+  const trimmed = url.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
+    return '';
+  }
+  return trimmed;
+}
+
+/**
  * 将 AI 返回的 Markdown 文本转换为 HTML
  * @param {string} text - Markdown 格式文本
  * @returns {string} HTML 字符串
@@ -284,9 +298,15 @@ export function renderMarkdown(text) {
       return `<div class="table-wrap"><table>${thead}${tbody}</table></div>`;
     })
     // 图片（在链接之前，避免 ![alt](url) 被误匹配为链接）
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%">')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+      const safe = sanitizeUrl(url);
+      return safe ? `<img src="${safe}" alt="${alt}" style="max-width:100%">` : `[图片: ${alt}]`;
+    })
     // 链接 [text](url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+      const safe = sanitizeUrl(url);
+      return safe ? `<a href="${safe}" target="_blank">${text}</a>` : text;
+    })
     // 粗斜体（必须在粗体/斜体之前）
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     // 粗体

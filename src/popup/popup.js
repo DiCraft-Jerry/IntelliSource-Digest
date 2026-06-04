@@ -134,7 +134,7 @@ function bindEvents() {
       els.modelSelect.style.display = 'none';
       els.modelHint.textContent = '';
       els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址`;
-      els.urlHint.className = 'field-hint';
+      els.urlHint.className = 'field-hint success';
       els.testConnGroup.style.display = 'none';
       clearTestResult();
     }
@@ -178,9 +178,15 @@ function bindEvents() {
     await runExtraction({ forceRefresh: true });
   });
 
-  // 重新抓取（强制刷新）
+  // 重新抓取（强制刷新，防抖避免重复触发）
   els.reExtractBtn.addEventListener('click', async () => {
-    await runExtraction({ forceRefresh: true });
+    if (els.reExtractBtn.disabled) return;
+    els.reExtractBtn.disabled = true;
+    try {
+      await runExtraction({ forceRefresh: true });
+    } finally {
+      els.reExtractBtn.disabled = false;
+    }
   });
 
   // 小眼睛切换 Key 明文/密文
@@ -252,7 +258,7 @@ function applyConfigToForm(config) {
       els.modelSelect.style.display = 'none';
       els.modelHint.textContent = '';
       els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址`;
-      els.urlHint.className = 'field-hint';
+      els.urlHint.className = 'field-hint success';
       els.testConnGroup.style.display = 'none';
       clearTestResult();
       return;
@@ -578,7 +584,7 @@ async function fetchModels() {
     els.modelSelect.style.display = '';
 
     els.modelHint.textContent = `✓ 已获取 ${models.length} 个模型，点击下拉列表选择`;
-    els.modelHint.className = 'field-hint';
+    els.modelHint.className = 'field-hint success';
   } catch (error) {
     if (error.name === 'AbortError') {
       els.modelHint.textContent = '获取超时，请手动输入模型名';
@@ -631,8 +637,16 @@ async function runExtraction({ forceRefresh }) {
     els.aiCard.style.display = '';
     els.summaryContent.innerHTML = '';
 
+    // 流式渲染节流：最多每帧更新一次 DOM，避免高频重绘
+    let renderPending = false;
     const summary = await summarizePageInfoStream(pageInfo, config, (_delta, fullContent) => {
-      els.summaryContent.innerHTML = renderMarkdown(fullContent);
+      if (!renderPending) {
+        renderPending = true;
+        requestAnimationFrame(() => {
+          els.summaryContent.innerHTML = renderMarkdown(fullContent);
+          renderPending = false;
+        });
+      }
       hideLoading();
     });
 

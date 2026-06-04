@@ -26,6 +26,79 @@
   --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-primary: #818cf8;
+    --color-primary-light: #a5b4fc;
+    --color-primary-hover: #6366f1;
+    --color-text: #f1f5f9;
+    --color-text-secondary: #94a3b8;
+    --color-text-muted: #64748b;
+    --color-border: #334155;
+    --color-border-light: #1e293b;
+    --color-error: #f87171;
+    --color-error-bg: #451a1a;
+    --color-error-border: #7f1d1d;
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
+    --shadow-sm: none;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .header {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  }
+
+  .summary-content code {
+    background: #334155;
+    color: #f87171;
+  }
+
+  .summary-content thead {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  }
+
+  .summary-content pre {
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+
+  .btn-primary {
+    box-shadow: 0 2px 8px rgba(129, 140, 248, 0.25);
+  }
+
+  .form-group input,
+  .form-group select {
+    background: #0f172a;
+    color: var(--color-text);
+  }
+
+  .form-group input:focus,
+  .form-group select:focus {
+    background: var(--color-surface);
+  }
+
+  .form-group input[readonly] {
+    background: #1a2332;
+  }
+
+  .link-list-wrap {
+    background: #0f172a;
+  }
+
+  .spinner {
+    border-color: var(--color-border);
+    border-top-color: var(--color-primary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -240,6 +313,10 @@ body {
   display: block;
   font-size: 11px;
   margin-top: 4px;
+  color: var(--color-text-muted);
+}
+
+.field-hint.success {
   color: var(--color-success);
 }
 
@@ -350,6 +427,26 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+  .spinner::after {
+    content: '...';
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+  .gear-btn:hover {
+    transform: none;
+  }
+  .btn:active {
+    transform: none;
+  }
+  .btn-primary:hover {
+    transform: none;
+  }
 }
 
 .loading p {

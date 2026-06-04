@@ -57,6 +57,7 @@ const els = {
   customApiPath: document.getElementById('customApiPath'),
   apiPathPreset: document.getElementById('apiPathPreset'),
   urlHint: document.getElementById('urlHint'),
+  customUrlHint: document.getElementById('customUrlHint'),
   apiKey: document.getElementById('apiKey'),
   toggleApiKey: document.getElementById('toggleApiKey'),
   model: document.getElementById('model'),
@@ -286,8 +287,8 @@ function applyConfigToForm(config) {
   els.model.value = config.model || '';
   els.modelSelect.style.display = 'none';
   els.modelHint.textContent = '';
-  els.urlHint.textContent = '';
-  els.urlHint.className = 'field-hint';
+  els.customUrlHint.textContent = '';
+  els.customUrlHint.className = 'field-hint';
   els.testConnGroup.style.display = '';
   clearTestResult();
 }
@@ -641,6 +642,8 @@ async function runExtraction({ forceRefresh }) {
     hideLoading();
   } catch (error) {
     hideLoading();
+    els.summaryContent.innerHTML = '';
+    els.aiCard.style.display = 'none';
     showError(error.message);
   }
 }

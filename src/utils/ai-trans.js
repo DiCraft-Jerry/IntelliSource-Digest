@@ -94,17 +94,18 @@ async function parseErrorResponse(response) {
   const status = response.status;
   const statusText = response.statusText;
 
+  const text = await response.text().catch(() => '');
+
   // 尝试解析 JSON 错误体（OpenAI 格式）
   try {
-    const body = await response.json();
+    const body = JSON.parse(text);
     if (body.error?.message) {
       return `API 返回错误 (${status}): ${body.error.message}`;
     }
   } catch {
-    // JSON 解析失败，尝试读文本
+    // 非 JSON，直接使用文本内容
   }
 
-  const text = await response.text().catch(() => '');
   const preview = text.substring(0, 300);
 
   // 针对常见 HTTP 状态码给出排查建议
@@ -303,8 +304,8 @@ export function renderMarkdown(text) {
     .replace(/^(---|\*\*\*|___)\s*$/gm, '<hr>')
     // 引用块（> 已被转义为 &gt;）
     .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-    // 有序列表 → 临时标记以区分 ol/ul
-    .replace(/^\d+\. (.+)$/gm, '<!--OL--><li>$1</li>')
+    // 有序列表 → 临时标记以区分 ol/ul（仅匹配 1-99，避免误匹配年份/小数）
+    .replace(/^(?:[1-9]|[1-9]\d)\. (.+)$/gm, '<!--OL--><li>$1</li>')
     // 无序列表
     .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
     // 段落与换行

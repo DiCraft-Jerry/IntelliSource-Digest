@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "智源摘读",
+  "version": "1.0.0",
+  "description": "IntelliSource Digest - 智能提取网页关键信息，AI 驱动的一键摘要工具",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://api.deepseek.com/*",
+    "https://dashscope.aliyuncs.com/*",
+    "https://api.moonshot.cn/*",
+    "https://open.bigmodel.cn/*"
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "智源摘读"
+  }
+}

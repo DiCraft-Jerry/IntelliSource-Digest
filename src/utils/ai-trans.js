@@ -149,6 +149,10 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
 
   validateApiUrl(apiUrl);
 
+  if (!navigator.onLine) {
+    throw new Error('当前无网络连接，请检查网络后重试');
+  }
+
   const prompt = buildPrompt(pageInfo);
 
   // 流式输出总超时 2 分钟
@@ -180,6 +184,9 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
       throw new Error(errorMsg);
     }
 
+    if (!response.body) {
+      throw new Error('AI 服务返回了空响应体，请检查 API 地址是否正确');
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';

@@ -165,17 +165,23 @@ function bindEvents() {
     }
   });
 
-  // 保存设置 → 回主视图并强制重抓
+  // 保存设置 → 回主视图并强制重抓（防抖避免重复点击）
   els.saveSettingsBtn.addEventListener('click', async () => {
+    if (els.saveSettingsBtn.disabled) return;
     const config = getConfigFromForm();
     const error = validateConfig(config);
     if (error) {
       showError(error);
       return;
     }
-    await saveConfig(config);
-    switchToMain();
-    await runExtraction({ forceRefresh: true });
+    els.saveSettingsBtn.disabled = true;
+    try {
+      await saveConfig(config);
+      switchToMain();
+      await runExtraction({ forceRefresh: true });
+    } finally {
+      els.saveSettingsBtn.disabled = false;
+    }
   });
 
   // 重新抓取（强制刷新，防抖避免重复触发）
@@ -303,16 +309,14 @@ function validateConfig(config) {
   if (!config.apiUrl) return '请输入 API 地址';
   if (!config.apiKey) return '请输入 API Key';
   if (!config.model) return '请输入模型名称';
-  // 自定义模式额外检查基础地址
   if (config.provider === 'custom') {
-    if (!els.customBaseUrl.value.trim()) return '请输入 API 基础地址';
     try {
       const url = new URL(config.apiUrl);
       if (!url.protocol.startsWith('http')) {
         return 'API 地址必须以 http:// 或 https:// 开头';
       }
     } catch {
-      return 'API 基础地址格式不正确';
+      return 'API 地址格式不正确，请检查基础地址和路径';
     }
   }
   return null;
@@ -456,6 +460,10 @@ async function testConnection() {
     setTestResult('error', '请先填写 API Key');
     return;
   }
+  if (!navigator.onLine) {
+    setTestResult('error', '✗ 无网络连接');
+    return;
+  }
 
   els.testConnBtn.disabled = true;
   setTestResult('loading', '正在测试...');
@@ -545,6 +553,11 @@ async function fetchModels() {
     els.modelHint.className = 'field-hint warning';
     return;
   }
+  if (!navigator.onLine) {
+    els.modelHint.textContent = '无网络连接，请检查网络';
+    els.modelHint.className = 'field-hint warning';
+    return;
+  }
 
   els.fetchModelsBtn.disabled = true;
   els.modelHint.textContent = '正在获取模型列表...';
@@ -604,7 +617,7 @@ async function runExtraction({ forceRefresh }) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('无法获取当前标签页');
-    if (tab.url?.startsWith('chrome://')) {
+    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://') || tab.url?.startsWith('about:')) {
       throw new Error('无法在 Chrome 内部页面使用，请打开普通网页');
     }
 

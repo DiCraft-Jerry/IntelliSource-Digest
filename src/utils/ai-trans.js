@@ -184,8 +184,9 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
     const decoder = new TextDecoder();
     let fullContent = '';
     let buffer = '';
+    let streamDone = false;
 
-    while (true) {
+    while (!streamDone) {
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -200,7 +201,7 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
         if (!trimmed || !trimmed.startsWith('data:')) continue;
 
         const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') break;
+        if (data === '[DONE]') { streamDone = true; break; }
 
         try {
           const parsed = JSON.parse(data);

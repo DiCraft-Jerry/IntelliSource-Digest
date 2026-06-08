@@ -5,6 +5,7 @@
  * 使用 chrome.storage.session 缓存结果，同页面重复打开不重抓
  */
 import { summarizePageInfoStream, renderMarkdown } from '../utils/ai-trans.js';
+import { extractPageInfoFunc } from '../utils/page-extractor.js';
 
 // 当前 AI 总结原始文本（供复制按钮使用）
 let currentSummaryText = '';
@@ -92,6 +93,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   const config = await loadConfig();
   applyConfigToForm(config);
+
+  // 优先检查右键菜单预计算结果（来自 Service Worker 后台分析）
+  const contextResult = await loadContextMenuResultRaw();
+  if (contextResult) {
+    if (contextResult.status === 'analyzing') {
+      // 后台正在 AI 分析中，展示加载态，等待结果写入后自动更新
+      hideAll();
+      showLoading('正在 AI 分析中，请稍候...');
+      listenForContextMenuResult();
+      return;
+    }
+    if (contextResult.status === 'done') {
+      displayContextMenuResult(contextResult);
+      await chrome.storage.session.remove(['contextMenuResult']).catch(() => {});
+      return;
+    }
+  }
 
   if (config.apiUrl && config.apiKey) {
     await runExtraction({ forceRefresh: false });
@@ -383,69 +401,65 @@ async function saveCache(tab, pageInfo, summary) {
   }
 }
 
-// ========== 页面信息提取（chrome.scripting.executeScript 直接注入执行） ==========
-
-// 注入页面执行的提取函数（独立声明，确保 Chrome 可正确序列化）
-function extractPageInfoFunc() {
-  // ---- 标题 ----
-  const title = document.title?.trim() || '';
-
-  // ---- 描述 ----
-  const metaDesc = document.querySelector('meta[name="description"]');
-  const description = metaDesc?.getAttribute('content')?.trim() || '';
-
-  // ---- 正文文本（优先 main/article，清理噪音标签） ----
-  const contentEl = document.querySelector('main') || document.querySelector('article') || document.body;
-  const clone = contentEl.cloneNode(true);
-  // 移除脚本、样式、导航、页脚等噪音
-  clone.querySelectorAll('script, style, nav, footer, header, aside, noscript, iframe, [role="navigation"], [role="banner"], [role="contentinfo"]').forEach((el) => el.remove());
-  const bodyText = (clone.textContent || '')
-    .replace(/[\t\r]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .substring(0, 4000);
-
-  // ---- 表格数据 ----
-  const tables = [];
-  const tableEls = document.querySelectorAll('table');
-  for (let i = 0; i < Math.min(tableEls.length, 5); i++) {
-    const table = tableEls[i];
-    const headers = [];
-    table.querySelectorAll('thead th, thead td, tr:first-child th, tr:first-child td').forEach((th) => {
-      headers.push((th.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 80));
-    });
-    const rows = [];
-    const bodyRows = table.querySelectorAll('tbody tr, tr');
-    for (let j = 0; j < Math.min(bodyRows.length, 20); j++) {
-      const cells = [];
-      bodyRows[j].querySelectorAll('td, th').forEach((td) => {
-        cells.push((td.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 120));
-      });
-      if (cells.length > 0) rows.push(cells);
-    }
-    if (rows.length > 0) {
-      tables.push({ headers, rows });
-    }
+/**
+ * 读取右键菜单预计算结果原始数据（不消费，由调用方决定是否清除）
+ * @returns {Promise<object | null>}
+ */
+async function loadContextMenuResultRaw() {
+  try {
+    const { contextMenuResult } = await chrome.storage.session.get(['contextMenuResult']);
+    if (!contextMenuResult) return null;
+    return contextMenuResult;
+  } catch {
+    return null;
   }
-
-  // ---- 链接 ----
-  const allLinks = Array.from(document.querySelectorAll('a[href]'));
-  const seen = new Set();
-  const links = allLinks
-    .map((a) => ({
-      href: a.href || '',
-      text: (a.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 150),
-    }))
-    .filter((link) => {
-      if (!link.href || link.href.startsWith('javascript:')) return false;
-      if (seen.has(link.href)) return false;
-      seen.add(link.href);
-      return true;
-    })
-    .slice(0, 200);
-
-  return { title, description, bodyText, tables, links };
 }
+
+/**
+ * 展示右键菜单预计算结果
+ * @param {{ pageInfo: object, summary: string, error: string }} result
+ */
+function displayContextMenuResult(result) {
+  hideAll();
+  if (result.pageInfo) {
+    renderPageInfo(result.pageInfo);
+    els.pageInfoCard.style.display = '';
+  }
+  if (result.summary) {
+    renderSummary(result.summary);
+    els.aiCard.style.display = '';
+  }
+  if (result.error) {
+    showError(result.error);
+  }
+}
+
+/**
+ * 监听 storage.session 中 contextMenuResult 的变更
+ * Service Worker 写入结果后 popup 自动更新 UI
+ */
+function listenForContextMenuResult() {
+  const handler = async (changes, areaName) => {
+    if (areaName !== 'session') return;
+    const change = changes.contextMenuResult;
+    if (!change?.newValue) return;
+
+    const result = change.newValue;
+    chrome.storage.onChanged.removeListener(handler);
+
+    // 校验是否匹配当前标签页
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url !== result.url) return;
+
+    if (result.status === 'done') {
+      displayContextMenuResult(result);
+      await chrome.storage.session.remove(['contextMenuResult']).catch(() => {});
+    }
+  };
+  chrome.storage.onChanged.addListener(handler);
+}
+
+// ========== 页面信息提取（chrome.scripting.executeScript 直接注入执行） ==========
 
 /**
  * 提取页面信息：统一使用 chrome.scripting.executeScript 直接注入函数执行

@@ -18,14 +18,14 @@
 - 定时任务使用 `chrome.alarms` API，禁止在 Service Worker 中使用 `setInterval`/`setTimeout` 做长周期轮询
 
 ### 通信规范
-- 扩展各部分（popup、content script、service worker）之间通信统一使用 `chrome.runtime.sendMessage` / `chrome.runtime.onMessage`
-- 所有异步通信调用必须检查 `chrome.runtime.lastError`，不允许静默忽略错误
-- 消息格式统一为 `{ action: string, payload?: any }` 结构，便于路由和扩展
+- 页面信息提取统一使用 `chrome.scripting.executeScript` 直接注入函数执行，不使用 content script 的消息通道
+- Popup 与 Service Worker 之间通过 `chrome.storage.session` 传递预计算结果（如右键菜单分析结果），通过 `chrome.storage.onChanged` 监听变更
+- 所有异步调用必须检查 `chrome.runtime.lastError`，不允许静默忽略错误
 
-### Content Script 规范
-- 在 `manifest.json` 中通过 `content_scripts` 字段声明注入规则
-- content script 与页面共享 DOM，但 JS 环境隔离（isolated world），不得依赖页面全局变量
-- 如需与页面内 JS 通信，使用 `window.postMessage` + 自定义事件，并在接收端做好来源校验
+### 右键菜单规范
+- Service Worker 中 `chrome.action.openPopup()` 必须在任何 `await` 之前调用（用户手势在 await 后丢失）
+- 右键菜单分析结果通过 `chrome.storage.session` 的 `contextMenuResult` 键传递，包含 `{ status, url, pageInfo, summary, error }`
+- 菜单注册使用先 `remove` 再 `create` 的模式，防止 SW 重启后 ID 冲突
 
 ### API 使用规范
 - 所有 Chrome API 调用推荐使用 Promise 封装或直接使用 `async/await`（Manifest V3 原生支持 Promise 风格调用）
@@ -56,23 +56,20 @@
   function checkRuntimeError() { ... }
   ```
 
-### 目录结构建议
+### 目录结构
 ```
 search-web-info/
-├── manifest.json          # 扩展清单文件
+├── manifest.json               # 扩展清单文件
 ├── src/
 │   ├── background/
-│   │   └── service-worker.js   # Service Worker 入口
-│   ├── content/
-│   │   └── content-script.js   # 内容脚本
+│   │   └── service-worker.js   # Service Worker（右键菜单、后台分析）
 │   ├── popup/
-│   │   ├── popup.html
-│   │   ├── popup.js
-│   │   └── popup.css
+│   │   ├── popup.html          # 弹窗界面（主视图 + 设置视图）
+│   │   ├── popup.js            # 弹窗逻辑（抓取、配置、缓存、右键结果检测）
+│   │   └── popup.css           # 样式（含暗色模式与 reduced-motion）
 │   ├── utils/
-│   │   ├── storage.js          # chrome.storage 封装
-│   │   ├── message.js          # 消息通信封装（含 lastError 检查）
-│   │   └── api.js              # AI API 调用封装
+│   │   ├── ai-trans.js         # AI API 流式调用 + Markdown → HTML 渲染
+│   │   └── page-extractor.js   # 页面信息提取函数（popup 与 SW 共享注入）
 │   └── assets/
 │       └── icons/
 ├── CLAUDE.md
@@ -82,6 +79,7 @@ search-web-info/
 ## 约束
 
 - 不可引入 jQuery、lodash 等大型第三方库，优先使用原生 API
-- 不可在 content script 中直接操作 `window.postMessage` 不做来源校验就信任数据
-- 所有网络请求使用 `fetch` API，并做好超时和错误处理
+- 页面提取直接使用 `chrome.scripting.executeScript` 注入纯函数，不走 content script
+- 所有网络请求使用 `fetch` API，并做好超时和错误处理（2 分钟流式超时）
 - 代码需兼容 Chrome 最新稳定版（向前兼容 2 个大版本即可）
+- `navigator` 等浏览器全局对象在 Service Worker 中不可用，需加 `typeof` 守卫

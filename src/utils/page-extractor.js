@@ -1,0 +1,64 @@
+/**
+ * 页面信息提取函数（被注入到目标页面中执行）
+ * 独立声明，确保 Chrome scripting.executeScript 可正确序列化
+ */
+export function extractPageInfoFunc() {
+  // ---- 标题 ----
+  const title = document.title?.trim() || '';
+
+  // ---- 描述 ----
+  const metaDesc = document.querySelector('meta[name="description"]');
+  const description = metaDesc?.getAttribute('content')?.trim() || '';
+
+  // ---- 正文文本（优先 main/article，清理噪音标签） ----
+  const contentEl = document.querySelector('main') || document.querySelector('article') || document.body;
+  const clone = contentEl.cloneNode(true);
+  // 移除脚本、样式、导航、页脚等噪音
+  clone.querySelectorAll('script, style, nav, footer, header, aside, noscript, iframe, [role="navigation"], [role="banner"], [role="contentinfo"]').forEach((el) => el.remove());
+  const bodyText = (clone.textContent || '')
+    .replace(/[\t\r]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .substring(0, 4000);
+
+  // ---- 表格数据 ----
+  const tables = [];
+  const tableEls = document.querySelectorAll('table');
+  for (let i = 0; i < Math.min(tableEls.length, 5); i++) {
+    const table = tableEls[i];
+    const headers = [];
+    table.querySelectorAll('thead th, thead td, tr:first-child th, tr:first-child td').forEach((th) => {
+      headers.push((th.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 80));
+    });
+    const rows = [];
+    const bodyRows = table.querySelectorAll('tbody tr, tr');
+    for (let j = 0; j < Math.min(bodyRows.length, 20); j++) {
+      const cells = [];
+      bodyRows[j].querySelectorAll('td, th').forEach((td) => {
+        cells.push((td.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 120));
+      });
+      if (cells.length > 0) rows.push(cells);
+    }
+    if (rows.length > 0) {
+      tables.push({ headers, rows });
+    }
+  }
+
+  // ---- 链接 ----
+  const allLinks = Array.from(document.querySelectorAll('a[href]'));
+  const seen = new Set();
+  const links = allLinks
+    .map((a) => ({
+      href: a.href || '',
+      text: (a.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 150),
+    }))
+    .filter((link) => {
+      if (!link.href || link.href.startsWith('javascript:')) return false;
+      if (seen.has(link.href)) return false;
+      seen.add(link.href);
+      return true;
+    })
+    .slice(0, 200);
+
+  return { title, description, bodyText, tables, links };
+}

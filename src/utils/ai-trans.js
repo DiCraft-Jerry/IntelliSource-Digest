@@ -149,7 +149,7 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
 
   validateApiUrl(apiUrl);
 
-  if (!navigator.onLine) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
     throw new Error('当前无网络连接，请检查网络后重试');
   }
 

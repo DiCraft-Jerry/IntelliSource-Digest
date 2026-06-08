@@ -5,6 +5,7 @@
 ## 功能
 
 - **一键抓取**：点击扩展图标即可提取当前网页的标题、描述、正文、表格和链接
+- **右键菜单**：在任意网页右键选择「用智源摘读分析此页面」，后台自动分析，打开弹窗即看结果
 - **AI 智能分析**：支持 OpenAI 兼容 API，对流式输出网页内容摘要与数据分析
 - **多供应商支持**：预设 OpenAI、DeepSeek、通义千问、Moonshot、智谱 GLM，同时支持自定义 API
 - **流式输出**：SSE 实时渲染 AI 生成内容，不再长时间等待
@@ -32,10 +33,16 @@
 
 ### 分析网页
 
+**方式一：工具栏图标**
 1. 打开任意网页
-2. 点击工具栏中的扩展图标
+2. 点击工具栏中的扩展图标（或按 `Ctrl+Shift+S` / `MacCtrl+Shift+S`）
 3. 等待抓取和分析完成，结果实时展示
 4. 可点击「重新抓取」强制刷新
+
+**方式二：右键菜单**
+1. 在任意网页空白处点击右键
+2. 选择「用智源摘读分析此页面」
+3. 后台自动分析，稍后点击扩展图标即可直接查看结果
 
 ## 项目结构
 
@@ -43,12 +50,15 @@
 search-web-info/
 ├── manifest.json              # Chrome 扩展清单
 ├── src/
+│   ├── background/
+│   │   └── service-worker.js  # Service Worker（右键菜单后台处理）
 │   ├── popup/
 │   │   ├── popup.html         # 弹窗界面
-│   │   ├── popup.js           # 主逻辑（抓取、配置、缓存）
-│   │   └── popup.css          # 样式
+│   │   ├── popup.js           # 主逻辑（抓取、配置、缓存、右键结果检测）
+│   │   └── popup.css          # 样式（含暗色模式）
 │   └── utils/
-│       └── ai-trans.js        # AI API 调用与 Markdown 渲染
+│       ├── ai-trans.js        # AI API 流式调用与 Markdown 渲染
+│       └── page-extractor.js  # 页面信息提取函数（popup 与 SW 共享）
 └── assets/
     └── icons/                 # 扩展图标
 ```
@@ -56,10 +66,12 @@ search-web-info/
 ## 技术栈
 
 - Chrome Manifest V3
+- Service Worker（ES Module）+ `chrome.contextMenus` 右键菜单
 - `chrome.scripting.executeScript` 直接注入提取
 - `chrome.storage.session` / `chrome.storage.local` 缓存与持久化
 - SSE 流式响应解析
 - 原生 JavaScript（无第三方依赖）
+- 暗色模式适配（`prefers-color-scheme: dark`）
 
 ## 隐私
 

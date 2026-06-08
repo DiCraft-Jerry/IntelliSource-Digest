@@ -4,6 +4,15 @@
   "version": "1.0.0",
   "description": "IntelliSource Digest - 智能提取网页关键信息，AI 驱动的一键摘要工具",
   "permissions": ["activeTab", "scripting", "storage"],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "MacCtrl+Shift+S"
+      },
+      "description": "打开智源摘读并分析当前页面"
+    }
+  },
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_title": "智源摘读"

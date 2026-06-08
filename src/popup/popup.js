@@ -6,6 +6,9 @@
  */
 import { summarizePageInfoStream, renderMarkdown } from '../utils/ai-trans.js';
 
+// 当前 AI 总结原始文本（供复制按钮使用）
+let currentSummaryText = '';
+
 // 主流 AI 供应商的默认配置
 const PROVIDERS = {
   openai: {
@@ -80,6 +83,7 @@ const els = {
   linkList: document.getElementById('linkList'),
   aiCard: document.getElementById('aiCard'),
   summaryContent: document.getElementById('summaryContent'),
+  copyBtn: document.getElementById('copyBtn'),
   reExtractBtn: document.getElementById('reExtractBtn'),
 };
 
@@ -198,6 +202,35 @@ function bindEvents() {
   // 小眼睛切换 Key 明文/密文
   els.toggleApiKey.addEventListener('click', () => {
     els.apiKey.type = els.apiKey.type === 'password' ? 'text' : 'password';
+  });
+
+  // 复制 AI 总结到剪贴板
+  els.copyBtn.addEventListener('click', async () => {
+    if (!currentSummaryText) return;
+    try {
+      await navigator.clipboard.writeText(currentSummaryText);
+      els.copyBtn.querySelector('span').textContent = '已复制';
+      els.copyBtn.classList.add('copied');
+      setTimeout(() => {
+        els.copyBtn.querySelector('span').textContent = '复制';
+        els.copyBtn.classList.remove('copied');
+      }, 1500);
+    } catch {
+      // 降级：用 textarea fallback
+      const ta = document.createElement('textarea');
+      ta.value = currentSummaryText;
+      ta.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      els.copyBtn.querySelector('span').textContent = '已复制';
+      els.copyBtn.classList.add('copied');
+      setTimeout(() => {
+        els.copyBtn.querySelector('span').textContent = '复制';
+        els.copyBtn.classList.remove('copied');
+      }, 1500);
+    }
   });
 }
 
@@ -656,6 +689,7 @@ async function runExtraction({ forceRefresh }) {
       if (!renderPending) {
         renderPending = true;
         requestAnimationFrame(() => {
+          currentSummaryText = fullContent;
           els.summaryContent.innerHTML = renderMarkdown(fullContent);
           renderPending = false;
         });
@@ -663,6 +697,7 @@ async function runExtraction({ forceRefresh }) {
       hideLoading();
     });
 
+    currentSummaryText = summary;
     els.aiCard.style.display = '';
 
     await saveCache(tab, pageInfo, summary);
@@ -706,6 +741,7 @@ function renderPageInfo(pageInfo) {
 }
 
 function renderSummary(summaryText) {
+  currentSummaryText = summaryText;
   els.summaryContent.innerHTML = renderMarkdown(summaryText);
 }
 

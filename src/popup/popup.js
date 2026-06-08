@@ -111,6 +111,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // 检查选中文字右键菜单预计算结果
+  const selectionResult = await loadSelectionResultRaw();
+  if (selectionResult) {
+    if (selectionResult.status === 'analyzing') {
+      hideAll();
+      showLoading('正在 AI 分析中，请稍候...');
+      listenForSelectionResult();
+      return;
+    }
+    if (selectionResult.status === 'done') {
+      displaySelectionResult(selectionResult);
+      await chrome.storage.session.remove(['contextMenuSelectionResult']).catch(() => {});
+      return;
+    }
+  }
+
   if (config.apiUrl && config.apiKey) {
     await runExtraction({ forceRefresh: false });
   } else {
@@ -457,6 +473,88 @@ function listenForContextMenuResult() {
     }
   };
   chrome.storage.onChanged.addListener(handler);
+}
+
+// ========== 选中文字右键菜单结果处理 ==========
+
+/**
+ * 读取选中文字右键菜单预计算结果原始数据
+ * @returns {Promise<object | null>}
+ */
+async function loadSelectionResultRaw() {
+  try {
+    const { contextMenuSelectionResult } = await chrome.storage.session.get(['contextMenuSelectionResult']);
+    if (!contextMenuSelectionResult) return null;
+    return contextMenuSelectionResult;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 展示选中文字右键菜单分析结果
+ * @param {{ selectedText: string, summary: string, error: string }} result
+ */
+function displaySelectionResult(result) {
+  hideAll();
+
+  if (result.error) {
+    showError(result.error);
+    return;
+  }
+
+  // 展示选中文字原文（引用样式）+ AI 分析结果
+  let contentHtml = '';
+
+  if (result.selectedText) {
+    const displayText = result.selectedText.length > 800
+      ? result.selectedText.substring(0, 800) + '...'
+      : result.selectedText;
+    contentHtml += `<blockquote style="margin:0 0 12px;padding:8px 12px;background:var(--blockquote-bg, #f1f5f9);border-left:3px solid var(--accent, #6366f1);border-radius:4px;color:var(--text-secondary, #475569);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(displayText)}</blockquote>`;
+  }
+
+  if (result.summary) {
+    contentHtml += renderMarkdown(result.summary);
+  }
+
+  els.pageInfoCard.style.display = '';
+  els.pageTitle.textContent = '选中文字分析';
+  els.pageDesc.textContent = '';
+  els.linkCount.textContent = '';
+  els.linkDetails.style.display = 'none';
+  els.aiCard.style.display = '';
+  els.summaryContent.innerHTML = contentHtml;
+}
+
+/**
+ * 监听 storage.session 中 contextMenuSelectionResult 的变更
+ */
+function listenForSelectionResult() {
+  const handler = async (changes, areaName) => {
+    if (areaName !== 'session') return;
+    const change = changes.contextMenuSelectionResult;
+    if (!change?.newValue) return;
+
+    const result = change.newValue;
+    chrome.storage.onChanged.removeListener(handler);
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url !== result.url) return;
+
+    if (result.status === 'done') {
+      displaySelectionResult(result);
+      await chrome.storage.session.remove(['contextMenuSelectionResult']).catch(() => {});
+    }
+  };
+  chrome.storage.onChanged.addListener(handler);
+}
+
+// HTML 转义（防 XSS）
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 // ========== 页面信息提取（chrome.scripting.executeScript 直接注入执行） ==========

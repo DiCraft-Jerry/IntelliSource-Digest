@@ -23,8 +23,10 @@
 - 所有异步调用必须检查 `chrome.runtime.lastError`，不允许静默忽略错误
 
 ### 右键菜单规范
+- 两个菜单项：全页分析（`contexts: ['page']`）和选中文字分析（`contexts: ['selection']`），通过不同菜单 ID 和存储键隔离
 - Service Worker 中 `chrome.action.openPopup()` 必须在任何 `await` 之前调用（用户手势在 await 后丢失）
-- 右键菜单分析结果通过 `chrome.storage.session` 的 `contextMenuResult` 键传递，包含 `{ status, url, pageInfo, summary, error }`
+- 全页分析结果通过 `contextMenuResult` 键传递：`{ status, url, pageInfo, summary, error }`
+- 选中文字分析结果通过 `contextMenuSelectionResult` 键传递：`{ status, url, selectedText, summary, error }`
 - 菜单注册使用先 `remove` 再 `create` 的模式，防止 SW 重启后 ID 冲突
 
 ### API 使用规范
@@ -68,7 +70,7 @@ search-web-info/
 │   │   ├── popup.js            # 弹窗逻辑（抓取、配置、缓存、右键结果检测）
 │   │   └── popup.css           # 样式（含暗色模式与 reduced-motion）
 │   ├── utils/
-│   │   ├── ai-trans.js         # AI API 流式调用 + Markdown → HTML 渲染
+│   │   ├── ai-trans.js         # AI API 流式调用（全页/选中文字）+ Markdown → HTML 渲染
 │   │   └── page-extractor.js   # 页面信息提取函数（popup 与 SW 共享注入）
 │   └── assets/
 │       └── icons/

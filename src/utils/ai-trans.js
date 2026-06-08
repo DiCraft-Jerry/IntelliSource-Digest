@@ -141,6 +141,68 @@ async function parseErrorResponse(response) {
  * @returns {Promise<string>} 完整的 AI 分析结果文本
  */
 export async function summarizePageInfoStream(pageInfo, config, onChunk) {
+  return _streamFromApi(SYSTEM_PROMPT, buildPrompt(pageInfo), config, onChunk);
+}
+
+// 选中文字分析专用系统提示词
+const SELECTION_SYSTEM_PROMPT = `你是一个专业的文字内容分析助手。请根据用户选中的网页文字，进行简明扼要的分析。
+
+## 输出要求
+1. **核心内容**：用 1-2 句话概括选中文字的主要内容
+2. **关键要点**：提炼 2-4 个关键信息点，每条不超过一行
+3. **补充分析**（可选）：如果有值得注意的细节、背景或数据，简要说明
+
+## 原则
+- 中文回复
+- 不要使用"这段文字""作者认为""该选段"等元描述，直接给分析结果
+- 如果选中文字过短或无实质内容，如实说明`;
+
+/**
+ * 为选中文字构建 AI 提示词
+ * @param {string} selectedText - 用户选中的文字
+ * @param {string} pageTitle - 页面标题（提供上下文）
+ * @returns {string}
+ */
+function buildSelectionPrompt(selectedText, pageTitle) {
+  const textSection = selectedText.length > 6000
+    ? selectedText.substring(0, 6000) + '\n...(文字过长已截断)'
+    : selectedText;
+
+  return [
+    `## 页面标题（供参考上下文）`,
+    pageTitle || '(未知页面)',
+    '',
+    `## 用户选中的文字`,
+    textSection,
+  ].join('\n');
+}
+
+/**
+ * 流式调用 AI 分析用户选中的文字
+ * @param {string} selectedText - 用户选中的文字
+ * @param {string} pageTitle - 页面标题（提供上下文）
+ * @param {{ apiUrl: string, apiKey: string, model: string }} config
+ * @param {(delta: string, fullText: string) => void} onChunk
+ * @returns {Promise<string>} 完整的 AI 分析结果文本
+ */
+export async function summarizeSelectionStream(selectedText, pageTitle, config, onChunk) {
+  if (!selectedText || !selectedText.trim()) {
+    throw new Error('未获取到选中的文字');
+  }
+  return _streamFromApi(SELECTION_SYSTEM_PROMPT, buildSelectionPrompt(selectedText, pageTitle), config, onChunk);
+}
+
+// ========== 内部：通用 SSE 流式调用 ==========
+
+/**
+ * 通用 SSE 流式 AI 调用
+ * @param {string} systemPrompt - 系统提示词
+ * @param {string} userPrompt - 用户提示词
+ * @param {{ apiUrl: string, apiKey: string, model: string }} config
+ * @param {(delta: string, fullText: string) => void} onChunk
+ * @returns {Promise<string>}
+ */
+async function _streamFromApi(systemPrompt, userPrompt, config, onChunk) {
   const { apiUrl, apiKey, model } = config;
 
   if (!apiUrl || !apiKey) {
@@ -152,8 +214,6 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     throw new Error('当前无网络连接，请检查网络后重试');
   }
-
-  const prompt = buildPrompt(pageInfo);
 
   // 流式输出总超时 2 分钟
   const controller = new AbortController();
@@ -169,8 +229,8 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
       body: JSON.stringify({
         model: model || 'gpt-4o',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
         max_tokens: 2000,
@@ -199,9 +259,8 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
 
       buffer += decoder.decode(value, { stream: true });
 
-      // 按行解析 SSE 事件
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // 保留未完成的行
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -223,7 +282,6 @@ export async function summarizePageInfoStream(pageInfo, config, onChunk) {
       }
     }
 
-    // 处理 buffer 中可能的最后一条数据
     if (buffer.trim()) {
       const trimmed = buffer.trim();
       if (trimmed.startsWith('data:') && trimmed.slice(5).trim() !== '[DONE]') {

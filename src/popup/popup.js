@@ -86,6 +86,9 @@ const els = {
   summaryContent: document.getElementById('summaryContent'),
   copyBtn: document.getElementById('copyBtn'),
   reExtractBtn: document.getElementById('reExtractBtn'),
+  historyDetails: document.getElementById('historyDetails'),
+  historyCount: document.getElementById('historyCount'),
+  historyList: document.getElementById('historyList'),
 };
 
 // ========== 初始化 ==========
@@ -98,15 +101,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const contextResult = await loadContextMenuResultRaw();
   if (contextResult) {
     if (contextResult.status === 'analyzing') {
-      // 后台正在 AI 分析中，展示加载态，等待结果写入后自动更新
       hideAll();
       showLoading('正在 AI 分析中，请稍候...');
       listenForContextMenuResult();
+      await renderHistoryList();
       return;
     }
     if (contextResult.status === 'done') {
       displayContextMenuResult(contextResult);
       await chrome.storage.session.remove(['contextMenuResult']).catch(() => {});
+      await renderHistoryList();
       return;
     }
   }
@@ -118,11 +122,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       hideAll();
       showLoading('正在 AI 分析中，请稍候...');
       listenForSelectionResult();
+      await renderHistoryList();
       return;
     }
     if (selectionResult.status === 'done') {
       displaySelectionResult(selectionResult);
       await chrome.storage.session.remove(['contextMenuSelectionResult']).catch(() => {});
+      await renderHistoryList();
       return;
     }
   }
@@ -133,6 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 未配置 API → 直接打开设置页
     switchToSettings();
   }
+  await renderHistoryList();
 });
 
 // ========== 事件绑定 ==========
@@ -448,6 +455,13 @@ function displayContextMenuResult(result) {
   if (result.error) {
     showError(result.error);
   }
+  // 保存到历史记录（异步，不阻塞 UI）
+  if (result.summary) {
+    saveToHistory({
+      type: 'page', url: result.url, title: result.pageInfo?.title || result.url,
+      summary: result.summary, pageInfo: result.pageInfo, timestamp: Date.now()
+    }).then(() => renderHistoryList());
+  }
 }
 
 /**
@@ -524,6 +538,12 @@ function displaySelectionResult(result) {
   els.linkDetails.style.display = 'none';
   els.aiCard.style.display = '';
   els.summaryContent.innerHTML = contentHtml;
+
+  // 保存到历史记录（异步，不阻塞 UI）
+  saveToHistory({
+    type: 'selection', url: result.url, title: '选中文字分析',
+    summary: result.summary, selectedText: result.selectedText, timestamp: Date.now()
+  }).then(() => renderHistoryList());
 }
 
 /**
@@ -813,6 +833,8 @@ async function runExtraction({ forceRefresh }) {
     els.aiCard.style.display = '';
 
     await saveCache(tab, pageInfo, summary);
+    await saveToHistory({ type: 'page', url: tab.url, title: pageInfo.title, summary, pageInfo, timestamp: Date.now() });
+    await renderHistoryList();
     hideLoading();
   } catch (error) {
     hideLoading();
@@ -882,4 +904,117 @@ function hideAll() {
   showError('');
   els.pageInfoCard.style.display = 'none';
   els.aiCard.style.display = 'none';
+}
+
+// ========== 历史记录管理 ==========
+
+const MAX_HISTORY = 10;
+const HISTORY_KEY = 'analysisHistory';
+
+async function saveToHistory(entry) {
+  try {
+    const history = await getHistory();
+    // 去重：同 URL + 同类型 + 同摘要的视为重复，不重复添加
+    const isDuplicate = history.some(
+      (h) => h.url === entry.url && h.type === entry.type && h.summary === entry.summary
+    );
+    if (isDuplicate) return;
+    history.unshift(entry);
+    if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+    await chrome.storage.session.set({ [HISTORY_KEY]: history });
+  } catch {
+    // 写入失败静默忽略
+  }
+}
+
+async function getHistory() {
+  try {
+    const result = await chrome.storage.session.get([HISTORY_KEY]);
+    return result[HISTORY_KEY] || [];
+  } catch {
+    return [];
+  }
+}
+
+async function renderHistoryList() {
+  const history = await getHistory();
+  els.historyCount.textContent = history.length;
+
+  if (history.length === 0) {
+    els.historyList.innerHTML = '<div class="history-empty">暂无历史记录</div>';
+    return;
+  }
+
+  els.historyList.innerHTML = history
+    .map((entry, index) => {
+      const title = entry.title || entry.url || '未知页面';
+      const domain = getDomain(entry.url);
+      const time = formatRelativeTime(entry.timestamp);
+      const preview = (entry.summary || '').replace(/\n/g, ' ').substring(0, 60);
+      return `
+        <div class="history-item" data-index="${index}">
+          <div class="history-item-title">${escapeHtml(title)}</div>
+          <div class="history-item-meta">
+            <span>${escapeHtml(domain || '')}</span>
+            <span>${time}</span>
+          </div>
+          <div class="history-item-preview">${escapeHtml(preview)}${entry.summary && entry.summary.length > 60 ? '...' : ''}</div>
+        </div>
+      `;
+    })
+    .join('');
+
+  // 绑定点击事件
+  els.historyList.querySelectorAll('.history-item').forEach((item) => {
+    item.addEventListener('click', async () => {
+      const index = parseInt(item.dataset.index, 10);
+      const historyArr = await getHistory();
+      if (historyArr[index]) {
+        loadHistoryEntry(historyArr[index]);
+      }
+    });
+  });
+}
+
+function loadHistoryEntry(entry) {
+  hideAll();
+  if (entry.type === 'page' && entry.pageInfo) {
+    renderPageInfo(entry.pageInfo);
+    els.pageInfoCard.style.display = '';
+    renderSummary(entry.summary || '');
+    els.aiCard.style.display = '';
+  } else if (entry.type === 'selection') {
+    let contentHtml = '';
+    if (entry.selectedText) {
+      const displayText = entry.selectedText.length > 800
+        ? entry.selectedText.substring(0, 800) + '...'
+        : entry.selectedText;
+      contentHtml += `<blockquote style="margin:0 0 12px;padding:8px 12px;background:var(--blockquote-bg, #f1f5f9);border-left:3px solid var(--accent, #6366f1);border-radius:4px;color:var(--text-secondary, #475569);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(displayText)}</blockquote>`;
+    }
+    contentHtml += renderMarkdown(entry.summary || '');
+    els.pageInfoCard.style.display = '';
+    els.pageTitle.textContent = '选中文字分析';
+    els.pageDesc.textContent = '';
+    els.linkCount.textContent = '';
+    els.linkDetails.style.display = 'none';
+    els.aiCard.style.display = '';
+    els.summaryContent.innerHTML = contentHtml;
+    currentSummaryText = entry.summary || '';
+  }
+}
+
+function getDomain(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function formatRelativeTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  return new Date(ts).toLocaleDateString('zh-CN');
 }

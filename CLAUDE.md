@@ -29,6 +29,12 @@
 - 选中文字分析结果通过 `contextMenuSelectionResult` 键传递：`{ status, url, selectedText, summary, error }`
 - 菜单注册使用先 `remove` 再 `create` 的模式，防止 SW 重启后 ID 冲突
 
+### 历史记录规范
+- 历史记录存储在 `chrome.storage.session` 的 `analysisHistory` 键，数组最多 10 条
+- 每次分析成功后（全页/选中文字）自动写入，同内容去重
+- 关闭浏览器后自动清空（session 级别存储）
+- 条目格式：`{ type, url, title, summary, pageInfo?, selectedText?, timestamp }`
+
 ### API 使用规范
 - 所有 Chrome API 调用推荐使用 Promise 封装或直接使用 `async/await`（Manifest V3 原生支持 Promise 风格调用）
 - 敏感权限（如 `tabs`、`storage`、`activeTab` 等）遵循最小权限原则，仅声明实际使用的权限

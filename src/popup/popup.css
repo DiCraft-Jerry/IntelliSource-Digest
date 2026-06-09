@@ -690,6 +690,20 @@ body {
   font-size: 12px;
 }
 
+/* 选中文字引用块（popup 直接渲染，不在 .summary-content 内） */
+.selected-quote {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: var(--color-bg);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .summary-content hr {
   border: none;
   border-top: 1px solid var(--color-border);
@@ -766,6 +780,21 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.btn-cancel {
+  background: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  width: auto;
+  margin-top: 10px;
+  padding: 4px 20px;
+  font-size: 12px;
+}
+
+.btn-cancel:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
 }
 
 .btn-sm {

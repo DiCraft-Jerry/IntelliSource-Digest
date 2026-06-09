@@ -140,8 +140,8 @@ async function parseErrorResponse(response) {
  * @param {(delta: string, fullText: string) => void} onChunk - 每收到一段内容时回调
  * @returns {Promise<string>} 完整的 AI 分析结果文本
  */
-export async function summarizePageInfoStream(pageInfo, config, onChunk) {
-  return _streamFromApi(SYSTEM_PROMPT, buildPrompt(pageInfo), config, onChunk);
+export async function summarizePageInfoStream(pageInfo, config, onChunk, signal) {
+  return _streamFromApi(SYSTEM_PROMPT, buildPrompt(pageInfo), config, onChunk, signal);
 }
 
 // 选中文字分析专用系统提示词
@@ -185,11 +185,11 @@ function buildSelectionPrompt(selectedText, pageTitle) {
  * @param {(delta: string, fullText: string) => void} onChunk
  * @returns {Promise<string>} 完整的 AI 分析结果文本
  */
-export async function summarizeSelectionStream(selectedText, pageTitle, config, onChunk) {
+export async function summarizeSelectionStream(selectedText, pageTitle, config, onChunk, signal) {
   if (!selectedText || !selectedText.trim()) {
     throw new Error('未获取到选中的文字');
   }
-  return _streamFromApi(SELECTION_SYSTEM_PROMPT, buildSelectionPrompt(selectedText, pageTitle), config, onChunk);
+  return _streamFromApi(SELECTION_SYSTEM_PROMPT, buildSelectionPrompt(selectedText, pageTitle), config, onChunk, signal);
 }
 
 // ========== 内部：通用 SSE 流式调用 ==========
@@ -202,7 +202,7 @@ export async function summarizeSelectionStream(selectedText, pageTitle, config, 
  * @param {(delta: string, fullText: string) => void} onChunk
  * @returns {Promise<string>}
  */
-async function _streamFromApi(systemPrompt, userPrompt, config, onChunk) {
+async function _streamFromApi(systemPrompt, userPrompt, config, onChunk, externalSignal) {
   const { apiUrl, apiKey, model } = config;
 
   if (!apiUrl || !apiKey) {
@@ -215,9 +215,12 @@ async function _streamFromApi(systemPrompt, userPrompt, config, onChunk) {
     throw new Error('当前无网络连接，请检查网络后重试');
   }
 
-  // 流式输出总超时 2 分钟
+  // 流式输出总超时 2 分钟，支持外部 AbortSignal
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120000);
+  if (externalSignal) {
+    externalSignal.addEventListener('abort', () => controller.abort());
+  }
 
   try {
     const response = await fetch(apiUrl, {

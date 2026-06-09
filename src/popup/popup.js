@@ -9,6 +9,7 @@ import { extractPageInfoFunc } from '../utils/page-extractor.js';
 
 // 当前 AI 总结原始文本（供复制按钮使用）
 let currentSummaryText = '';
+let abortController = null;
 
 // 主流 AI 供应商的默认配置
 const PROVIDERS = {
@@ -89,6 +90,7 @@ const els = {
   historyDetails: document.getElementById('historyDetails'),
   historyCount: document.getElementById('historyCount'),
   historyList: document.getElementById('historyList'),
+  cancelBtn: document.getElementById('cancelBtn'),
 };
 
 // ========== 初始化 ==========
@@ -178,7 +180,7 @@ function bindEvents() {
       els.model.value = provider.model;
       els.modelSelect.style.display = 'none';
       els.modelHint.textContent = '';
-      els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址`;
+      els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址，可直接修改`;
       els.urlHint.className = 'field-hint success';
       els.testConnGroup.style.display = 'none';
       clearTestResult();
@@ -240,9 +242,20 @@ function bindEvents() {
     }
   });
 
+  // 取消分析
+  els.cancelBtn.addEventListener('click', () => {
+    if (abortController) {
+      abortController.abort();
+      abortController = null;
+    }
+  });
+
   // 小眼睛切换 Key 明文/密文
   els.toggleApiKey.addEventListener('click', () => {
-    els.apiKey.type = els.apiKey.type === 'password' ? 'text' : 'password';
+    const isPassword = els.apiKey.type === 'password';
+    els.apiKey.type = isPassword ? 'text' : 'password';
+    els.toggleApiKey.querySelector('.eye-on').style.display = isPassword ? 'none' : '';
+    els.toggleApiKey.querySelector('.eye-off').style.display = isPassword ? '' : 'none';
   });
 
   // 复制 AI 总结到剪贴板
@@ -263,14 +276,16 @@ function bindEvents() {
       ta.style.cssText = 'position:fixed;left:-9999px';
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand('copy');
+      const copied = document.execCommand('copy');
       ta.remove();
-      els.copyBtn.querySelector('span').textContent = '已复制';
-      els.copyBtn.classList.add('copied');
-      setTimeout(() => {
-        els.copyBtn.querySelector('span').textContent = '复制';
-        els.copyBtn.classList.remove('copied');
-      }, 1500);
+      if (copied) {
+        els.copyBtn.querySelector('span').textContent = '已复制';
+        els.copyBtn.classList.add('copied');
+        setTimeout(() => {
+          els.copyBtn.querySelector('span').textContent = '复制';
+          els.copyBtn.classList.remove('copied');
+        }, 1500);
+      }
     }
   });
 }
@@ -337,7 +352,7 @@ function applyConfigToForm(config) {
       els.model.value = config.model || provider.model;
       els.modelSelect.style.display = 'none';
       els.modelHint.textContent = '';
-      els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址`;
+      els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址，可直接修改`;
       els.urlHint.className = 'field-hint success';
       els.testConnGroup.style.display = 'none';
       clearTestResult();
@@ -524,7 +539,7 @@ function displaySelectionResult(result) {
     const displayText = result.selectedText.length > 800
       ? result.selectedText.substring(0, 800) + '...'
       : result.selectedText;
-    contentHtml += `<blockquote style="margin:0 0 12px;padding:8px 12px;background:var(--blockquote-bg, #f1f5f9);border-left:3px solid var(--accent, #6366f1);border-radius:4px;color:var(--text-secondary, #475569);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(displayText)}</blockquote>`;
+    contentHtml += `<blockquote class="selected-quote">${escapeHtml(displayText)}</blockquote>`;
   }
 
   if (result.summary) {
@@ -587,10 +602,14 @@ function escapeHtml(str) {
  * @returns {Promise<{ title: string, description: string, links: Array }>}
  */
 async function extractPageInfo(tabId) {
-  const results = await chrome.scripting.executeScript({
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('页面提取超时，请刷新页面后重试')), 15000)
+  );
+  const injection = chrome.scripting.executeScript({
     target: { tabId },
     func: extractPageInfoFunc,
   });
+  const results = await Promise.race([injection, timeout]);
   if (results?.[0]?.result) return results[0].result;
   throw new Error('无法从当前页面提取信息，请刷新页面后重试');
 }
@@ -779,6 +798,8 @@ async function fetchModels() {
 // ========== 核心流程 ==========
 
 async function runExtraction({ forceRefresh }) {
+  abortController = new AbortController();
+  let rafId = null;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('无法获取当前标签页');
@@ -816,18 +837,25 @@ async function runExtraction({ forceRefresh }) {
     els.summaryContent.innerHTML = '';
 
     // 流式渲染节流：最多每帧更新一次 DOM，避免高频重绘
+    let loadingHidden = false;
     let renderPending = false;
     const summary = await summarizePageInfoStream(pageInfo, config, (_delta, fullContent) => {
+      if (!loadingHidden) {
+        hideLoading();
+        loadingHidden = true;
+      }
       if (!renderPending) {
         renderPending = true;
-        requestAnimationFrame(() => {
+        rafId = requestAnimationFrame(() => {
           currentSummaryText = fullContent;
           els.summaryContent.innerHTML = renderMarkdown(fullContent);
           renderPending = false;
         });
       }
-      hideLoading();
-    });
+    }, abortController.signal);
+
+    // 取消未完成的 rAF
+    if (rafId) cancelAnimationFrame(rafId);
 
     currentSummaryText = summary;
     els.aiCard.style.display = '';
@@ -837,10 +865,15 @@ async function runExtraction({ forceRefresh }) {
     await renderHistoryList();
     hideLoading();
   } catch (error) {
+    if (rafId) cancelAnimationFrame(rafId);
     hideLoading();
     els.summaryContent.innerHTML = '';
     els.aiCard.style.display = 'none';
-    showError(error.message);
+    if (error.name !== 'AbortError') {
+      showError(error.message);
+    }
+  } finally {
+    abortController = null;
   }
 }
 
@@ -989,7 +1022,7 @@ function loadHistoryEntry(entry) {
       const displayText = entry.selectedText.length > 800
         ? entry.selectedText.substring(0, 800) + '...'
         : entry.selectedText;
-      contentHtml += `<blockquote style="margin:0 0 12px;padding:8px 12px;background:var(--blockquote-bg, #f1f5f9);border-left:3px solid var(--accent, #6366f1);border-radius:4px;color:var(--text-secondary, #475569);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(displayText)}</blockquote>`;
+      contentHtml += `<blockquote class="selected-quote">${escapeHtml(displayText)}</blockquote>`;
     }
     contentHtml += renderMarkdown(entry.summary || '');
     els.pageInfoCard.style.display = '';

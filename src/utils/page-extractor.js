@@ -32,7 +32,12 @@ export function extractPageInfoFunc() {
     });
     const rows = [];
     const bodyRows = table.querySelectorAll('tbody tr, tr');
-    for (let j = 0; j < Math.min(bodyRows.length, 20); j++) {
+    // 如果第一行包含 th，说明是表头行，跳过以避免与 headers 重复
+    let startIdx = 0;
+    if (bodyRows.length > 0 && bodyRows[0].querySelector('th')) {
+      startIdx = 1;
+    }
+    for (let j = startIdx; j < Math.min(bodyRows.length, 20 + startIdx); j++) {
       const cells = [];
       bodyRows[j].querySelectorAll('td, th').forEach((td) => {
         cells.push((td.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 120));

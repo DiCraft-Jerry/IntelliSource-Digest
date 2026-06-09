@@ -484,14 +484,20 @@ function displayContextMenuResult(result) {
  * Service Worker 写入结果后 popup 自动更新 UI
  */
 function listenForContextMenuResult() {
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    chrome.storage.onChanged.removeListener(handler);
+  };
   const handler = async (changes, areaName) => {
     if (areaName !== 'session') return;
     const change = changes.contextMenuResult;
     if (!change?.newValue) return;
 
-    const result = change.newValue;
-    chrome.storage.onChanged.removeListener(handler);
+    cleanup();
 
+    const result = change.newValue;
     // 校验是否匹配当前标签页
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.url !== result.url) return;
@@ -502,6 +508,8 @@ function listenForContextMenuResult() {
     }
   };
   chrome.storage.onChanged.addListener(handler);
+  // 120 秒安全超时，防止 SW 崩溃导致监听器永久泄漏
+  setTimeout(cleanup, 120000);
 }
 
 // ========== 选中文字右键菜单结果处理 ==========
@@ -565,14 +573,20 @@ function displaySelectionResult(result) {
  * 监听 storage.session 中 contextMenuSelectionResult 的变更
  */
 function listenForSelectionResult() {
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    chrome.storage.onChanged.removeListener(handler);
+  };
   const handler = async (changes, areaName) => {
     if (areaName !== 'session') return;
     const change = changes.contextMenuSelectionResult;
     if (!change?.newValue) return;
 
-    const result = change.newValue;
-    chrome.storage.onChanged.removeListener(handler);
+    cleanup();
 
+    const result = change.newValue;
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.url !== result.url) return;
 
@@ -582,6 +596,8 @@ function listenForSelectionResult() {
     }
   };
   chrome.storage.onChanged.addListener(handler);
+  // 120 秒安全超时，防止 SW 崩溃导致监听器永久泄漏
+  setTimeout(cleanup, 120000);
 }
 
 // HTML 转义（防 XSS）
@@ -589,7 +605,8 @@ function escapeHtml(str) {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ========== 页面信息提取（chrome.scripting.executeScript 直接注入执行） ==========
@@ -854,8 +871,9 @@ async function runExtraction({ forceRefresh }) {
       }
     }, abortController.signal);
 
-    // 取消未完成的 rAF
-    if (rafId) cancelAnimationFrame(rafId);
+    // 取消未完成的 rAF 并确保最终内容已渲染
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    els.summaryContent.innerHTML = renderMarkdown(summary);
 
     currentSummaryText = summary;
     els.aiCard.style.display = '';

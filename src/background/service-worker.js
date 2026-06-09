@@ -134,10 +134,14 @@ async function handleSelectionMenuClick(tab, selectedText) {
 // ========== 页面信息提取 ==========
 
 async function extractPageInfo(tabId) {
-  const results = await chrome.scripting.executeScript({
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('页面提取超时，请刷新页面后重试')), 15000)
+  );
+  const injection = chrome.scripting.executeScript({
     target: { tabId },
     func: extractPageInfoFunc,
   });
+  const results = await Promise.race([injection, timeout]);
   if (results?.[0]?.result) return results[0].result;
   throw new Error('无法从当前页面提取信息，请刷新页面后重试');
 }

@@ -14,7 +14,7 @@ export function extractPageInfoFunc() {
   const contentEl = document.querySelector('main') || document.querySelector('article') || document.body;
   const clone = contentEl.cloneNode(true);
   // 移除脚本、样式、导航、页脚等噪音
-  clone.querySelectorAll('script, style, nav, footer, header, aside, noscript, iframe, [role="navigation"], [role="banner"], [role="contentinfo"]').forEach((el) => el.remove());
+  clone.querySelectorAll('script, style, nav, footer, header, aside, noscript, iframe, form, svg, [role="navigation"], [role="banner"], [role="contentinfo"], [role="complementary"], [role="search"]').forEach((el) => el.remove());
   const bodyText = (clone.textContent || '')
     .replace(/[\t\r]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
@@ -27,9 +27,17 @@ export function extractPageInfoFunc() {
   for (let i = 0; i < Math.min(tableEls.length, 5); i++) {
     const table = tableEls[i];
     const headers = [];
-    table.querySelectorAll('thead th, thead td, tr:first-child th, tr:first-child td').forEach((th) => {
-      headers.push((th.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 80));
-    });
+    // 优先从 thead 提取表头，否则从第一行提取
+    const theadHeaders = table.querySelectorAll('thead th, thead td');
+    if (theadHeaders.length > 0) {
+      theadHeaders.forEach((th) => {
+        headers.push((th.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 80));
+      });
+    } else {
+      table.querySelectorAll('tr:first-child th, tr:first-child td').forEach((th) => {
+        headers.push((th.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 80));
+      });
+    }
     const rows = [];
     const bodyRows = table.querySelectorAll('tbody tr, tr');
     // 如果第一行包含 th，说明是表头行，跳过以避免与 headers 重复

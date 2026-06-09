@@ -4,7 +4,7 @@
  * 优先通过消息通信提取，失败时自动降级为 chrome.scripting.executeScript 注入
  * 使用 chrome.storage.session 缓存结果，同页面重复打开不重抓
  */
-import { summarizePageInfoStream, renderMarkdown, validateApiUrl } from '../utils/ai-trans.js';
+import { summarizePageInfoStream, renderMarkdown, validateApiUrl, escapeHtml } from '../utils/ai-trans.js';
 import { extractPageInfoFunc } from '../utils/page-extractor.js';
 
 // 当前 AI 总结原始文本（供复制按钮使用）
@@ -597,15 +597,6 @@ function listenForSelectionResult() {
   setTimeout(cleanup, 120000);
 }
 
-// HTML 转义（防 XSS）
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 // ========== 页面信息提取（chrome.scripting.executeScript 直接注入执行） ==========
 
 /**
@@ -613,7 +604,7 @@ function escapeHtml(str) {
  * 不走 chrome.tabs.sendMessage 消息通道，彻底避免旧 content script
  * 孤立后 onMessage 监听器 return true 导致的 channel closed 报错
  * @param {number} tabId
- * @returns {Promise<{ title: string, description: string, links: Array }>}
+ * @returns {Promise<{ title: string, description: string, bodyText: string, tables: Array, links: Array }>}
  */
 async function extractPageInfo(tabId) {
   const timeout = new Promise((_, reject) =>

@@ -327,6 +327,19 @@ async function _streamFromApi(systemPrompt, userPrompt, config, onChunk, externa
 }
 
 /**
+ * HTML 转义（防 XSS）
+ * @param {string} str
+ * @returns {string}
+ */
+export function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
  * 过滤危险 URL 协议，防止 XSS
  * @param {string} url
  * @returns {string} 安全 URL 或空字符串
@@ -414,10 +427,10 @@ export function renderMarkdown(text) {
       return '<blockquote>' + processInline(content) + '</blockquote>';
     }
 
-    // 有序列表（以 "数字. " 开头，仅匹配 1-99）
-    if (/^(?:[1-9]|[1-9]\d)\. /.test(firstLine)) {
+    // 有序列表（以 "数字. " 开头）
+    if (/^\d+\. /.test(firstLine)) {
       return lines.map((l) => {
-        const m = l.match(/^(?:[1-9]|[1-9]\d)\. (.+)/);
+        const m = l.match(/^\d+\. (.+)/);
         return m ? '<!--OL--><li>' + processInline(m[1]) + '</li>' : '<p>' + processInline(l) + '</p>';
       }).join('');
     }

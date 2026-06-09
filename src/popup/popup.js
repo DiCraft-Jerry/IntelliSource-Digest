@@ -135,13 +135,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // 提前渲染历史记录，避免等待 AI 分析期间显示为空
+  await renderHistoryList();
+
   if (config.apiUrl && config.apiKey) {
     await runExtraction({ forceRefresh: false });
   } else {
     // 未配置 API → 直接打开设置页
     switchToSettings();
   }
-  await renderHistoryList();
 });
 
 // ========== 事件绑定 ==========

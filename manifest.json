@@ -3,7 +3,7 @@
   "name": "智源摘读",
   "version": "1.0.0",
   "description": "IntelliSource Digest - 智能提取网页关键信息，AI 驱动的一键摘要工具",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "notifications"],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"

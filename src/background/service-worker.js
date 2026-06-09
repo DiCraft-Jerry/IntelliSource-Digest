@@ -80,9 +80,11 @@ async function handleContextMenuClick(tab) {
     // 存储成功结果
     await storeResult({ status: 'done', url: tab.url, pageInfo, summary });
     clearBadge(tab.id);
+    notifyComplete(tab, pageInfo.title || tab.title, summary);
   } catch (error) {
     await storeResult({ status: 'done', url: tab.url, pageInfo: null, summary: null, error: error.message });
     clearBadge(tab.id);
+    notifyError(tab, error.message);
   }
 }
 
@@ -137,9 +139,11 @@ async function handleSelectionMenuClick(tab, selectedText) {
     // 存储成功结果
     await storeSelectionResult({ status: 'done', url: tab.url, selectedText, summary });
     clearBadge(tab.id);
+    notifyComplete(tab, '选中文字分析', summary);
   } catch (error) {
     await storeSelectionResult({ status: 'done', url: tab.url, selectedText, summary: null, error: error.message });
     clearBadge(tab.id);
+    notifyError(tab, error.message);
   }
 }
 
@@ -206,6 +210,37 @@ function setBadge(tabId, text, color) {
 function clearBadge(tabId) {
   chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
 }
+
+// ========== 通知辅助函数 ==========
+
+function notifyComplete(tab, title, summary) {
+  const preview = (summary || '').replace(/\n/g, ' ').substring(0, 80);
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'assets/icons/icon128.png',
+    title: '智源摘读 · 分析完成',
+    message: `${title ? title.substring(0, 60) : '页面'}${preview ? '\n' + preview : ''}`,
+  }).catch(() => {});
+}
+
+function notifyError(tab, errorMsg) {
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'assets/icons/icon128.png',
+    title: '智源摘读 · 分析失败',
+    message: errorMsg ? errorMsg.substring(0, 100) : '未知错误',
+  }).catch(() => {});
+}
+
+// 点击通知 → 打开 popup
+chrome.notifications.onClicked.addListener((notificationId) => {
+  chrome.notifications.clear(notificationId);
+  chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+    if (tab?.id) {
+      chrome.action.openPopup();
+    }
+  }).catch(() => {});
+});
 
 // ========== 尝试打开 popup ==========
 

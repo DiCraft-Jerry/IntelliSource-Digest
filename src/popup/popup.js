@@ -105,6 +105,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (tab?.id) {
     chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
   }
+  // 清除所有通知
+  chrome.notifications.getAll((notifications) => {
+    Object.keys(notifications).forEach((id) => chrome.notifications.clear(id));
+  });
+  }
 
   // 优先检查右键菜单预计算结果（来自 Service Worker 后台分析）
   const contextResult = await loadContextMenuResultRaw();
@@ -1022,6 +1027,19 @@ async function getHistory() {
   }
 }
 
+async function deleteHistoryEntry(index) {
+  try {
+    const history = await getHistory();
+    if (index >= 0 && index < history.length) {
+      history.splice(index, 1);
+      await chrome.storage.session.set({ [HISTORY_KEY]: history });
+    }
+  } catch {
+    // 删除失败静默忽略
+  }
+  await renderHistoryList();
+}
+
 async function renderHistoryList() {
   const history = await getHistory();
   els.historyCount.textContent = history.length;
@@ -1039,6 +1057,7 @@ async function renderHistoryList() {
       const preview = (entry.summary || '').replace(/\n/g, ' ').substring(0, 60);
       return `
         <div class="history-item" data-index="${index}">
+          <button class="history-item-delete" data-index="${index}" title="删除此记录">&times;</button>
           <div class="history-item-title">${escapeHtml(title)}</div>
           <div class="history-item-meta">
             <span>${escapeHtml(domain || '')}</span>
@@ -1050,7 +1069,7 @@ async function renderHistoryList() {
     })
     .join('');
 
-  // 绑定点击事件
+  // 绑定条目点击事件（加载历史详情）
   els.historyList.querySelectorAll('.history-item').forEach((item) => {
     item.addEventListener('click', async () => {
       const index = parseInt(item.dataset.index, 10);
@@ -1058,6 +1077,15 @@ async function renderHistoryList() {
       if (historyArr[index]) {
         loadHistoryEntry(historyArr[index]);
       }
+    });
+  });
+
+  // 绑定删除按钮事件（阻止冒泡，避免触发条目点击）
+  els.historyList.querySelectorAll('.history-item-delete').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.dataset.index, 10);
+      await deleteHistoryEntry(index);
     });
   });
 }

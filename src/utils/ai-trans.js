@@ -72,7 +72,7 @@ function buildPrompt(pageInfo) {
  * @param {string} apiUrl
  * @throws {Error} URL 不合法时抛出
  */
-function validateApiUrl(apiUrl) {
+export function validateApiUrl(apiUrl) {
   let url;
   try {
     url = new URL(apiUrl);
@@ -218,8 +218,10 @@ async function _streamFromApi(systemPrompt, userPrompt, config, onChunk, externa
   // 流式输出总超时 2 分钟，支持外部 AbortSignal
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120000);
+  let onExternalAbort = null;
   if (externalSignal) {
-    externalSignal.addEventListener('abort', () => controller.abort());
+    onExternalAbort = () => controller.abort();
+    externalSignal.addEventListener('abort', onExternalAbort);
   }
 
   try {
@@ -318,6 +320,9 @@ async function _streamFromApi(systemPrompt, userPrompt, config, onChunk, externa
     throw error;
   } finally {
     clearTimeout(timeout);
+    if (externalSignal && onExternalAbort) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
   }
 }
 
@@ -458,7 +463,7 @@ function processInline(text) {
     // 链接 [text](url)
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, linkText, url) => {
       const safe = sanitizeUrl(url);
-      return safe ? '<a href="' + safe + '" target="_blank">' + linkText + '</a>' : linkText;
+      return safe ? '<a href="' + safe + '" target="_blank" rel="noopener noreferrer">' + linkText + '</a>' : linkText;
     })
     // 粗斜体（必须在粗体/斜体之前）
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')

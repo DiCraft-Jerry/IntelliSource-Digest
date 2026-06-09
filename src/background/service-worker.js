@@ -13,7 +13,9 @@ const SELECTION_RESULT_KEY = 'contextMenuSelectionResult';
 // ========== 注册右键菜单（顶层执行，确保 SW 重启后菜单仍存在） ==========
 // 先移除再创建，避免 SW 重启后因 ID 已存在而报错
 chrome.contextMenus.remove(MENU_ID, () => {
-  chrome.runtime.lastError;
+  if (chrome.runtime.lastError) {
+    // 首次安装时菜单不存在，忽略
+  }
   chrome.contextMenus.create({
     id: MENU_ID,
     title: '用智源摘读分析此页面',
@@ -21,7 +23,9 @@ chrome.contextMenus.remove(MENU_ID, () => {
   });
 });
 chrome.contextMenus.remove(SELECTION_MENU_ID, () => {
-  chrome.runtime.lastError;
+  if (chrome.runtime.lastError) {
+    // 首次安装时菜单不存在，忽略
+  }
   chrome.contextMenus.create({
     id: SELECTION_MENU_ID,
     title: '用智源摘读分析选中内容',

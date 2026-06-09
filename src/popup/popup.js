@@ -4,7 +4,7 @@
  * 优先通过消息通信提取，失败时自动降级为 chrome.scripting.executeScript 注入
  * 使用 chrome.storage.session 缓存结果，同页面重复打开不重抓
  */
-import { summarizePageInfoStream, renderMarkdown } from '../utils/ai-trans.js';
+import { summarizePageInfoStream, renderMarkdown, validateApiUrl } from '../utils/ai-trans.js';
 import { extractPageInfoFunc } from '../utils/page-extractor.js';
 
 // 当前 AI 总结原始文本（供复制按钮使用）
@@ -400,12 +400,9 @@ function validateConfig(config) {
   if (!config.model) return '请输入模型名称';
   if (config.provider === 'custom') {
     try {
-      const url = new URL(config.apiUrl);
-      if (!url.protocol.startsWith('http')) {
-        return 'API 地址必须以 http:// 或 https:// 开头';
-      }
-    } catch {
-      return 'API 地址格式不正确，请检查基础地址和路径';
+      validateApiUrl(config.apiUrl);
+    } catch (e) {
+      return e.message;
     }
   }
   return null;
@@ -475,7 +472,7 @@ function displayContextMenuResult(result) {
     saveToHistory({
       type: 'page', url: result.url, title: result.pageInfo?.title || result.url,
       summary: result.summary, pageInfo: result.pageInfo, timestamp: Date.now()
-    }).then(() => renderHistoryList());
+    }).then(() => renderHistoryList()).catch(() => {});
   }
 }
 
@@ -566,7 +563,7 @@ function displaySelectionResult(result) {
   saveToHistory({
     type: 'selection', url: result.url, title: '选中文字分析',
     summary: result.summary, selectedText: result.selectedText, timestamp: Date.now()
-  }).then(() => renderHistoryList());
+  }).then(() => renderHistoryList()).catch(() => {});
 }
 
 /**
@@ -911,6 +908,7 @@ function renderPageInfo(pageInfo) {
     a.textContent = link.text || link.href;
     a.title = link.href;
     a.target = '_blank';
+    a.rel = 'noopener noreferrer';
     li.appendChild(a);
     els.linkList.appendChild(li);
   });

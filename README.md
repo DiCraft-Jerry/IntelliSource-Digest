@@ -7,10 +7,14 @@
 - **一键抓取**：点击扩展图标即可提取当前网页的标题、描述、正文、表格和链接
 - **右键菜单**：在任意网页右键选择「用智源摘读分析此页面」，后台自动分析，打开弹窗即看结果
 - **选中文字分析**：选中网页文字后右键选择「用智源摘读分析选中内容」，直接对选中文字进行 AI 分析
-- **AI 智能分析**：支持 OpenAI 兼容 API，对流式输出网页内容摘要与数据分析
-- **多供应商支持**：预设 OpenAI、DeepSeek、通义千问、Moonshot、智谱 GLM，同时支持自定义 API
-- **历史记录**：自动保存最近 10 次分析结果，点击可回看，关闭浏览器后自动清空
-- **流式输出**：SSE 实时渲染 AI 生成内容，不再长时间等待
+- **AI 智能分析**：支持 OpenAI 兼容 API，流式输出网页内容摘要与数据分析
+- **多供应商支持**：预设 OpenAI、DeepSeek、通义千问、Moonshot、智谱 GLM，支持自定义 API
+- **AI 参数可配**：Temperature（随机性）、最大输出 token 数、自定义系统提示词均可调整
+- **历史记录**：自动保存最近 10 次分析结果，点击回看，支持单条删除，关闭浏览器后自动清空
+- **流式输出**：SSE 实时渲染 AI 生成内容，取消按钮可随时中断
+- **桌面通知**：后台分析完成后弹出 Chrome 桌面通知，点击通知打开弹窗
+- **Badge 提示**：后台分析期间工具栏图标显示"..."，完成后自动消失
+- **导出 Markdown**：一键将 AI 分析结果导出为 `.md` 文件下载
 - **本地存储**：API Key 仅保存在浏览器本地，不上传任何第三方
 
 ## 安装
@@ -31,7 +35,8 @@
 2. 选择 AI 供应商（或选「自定义」输入自建 API 地址）
 3. 填入 API Key
 4. 输入模型名称（可点击「获取模型」自动拉取列表）
-5. 点击「保存设置」
+5. （可选）调整 Temperature、最大输出长度、自定义系统提示词
+6. 点击「保存设置」
 
 ### 分析网页
 
@@ -61,13 +66,15 @@ search-web-info/
 │   │   └── service-worker.js  # Service Worker（右键菜单后台处理）
 │   ├── popup/
 │   │   ├── popup.html         # 弹窗界面
-│   │   ├── popup.js           # 主逻辑（抓取、配置、缓存、右键结果检测）
+│   │   ├── popup.js           # 主逻辑（抓取、配置、缓存、右键结果检测、历史记录）
 │   │   └── popup.css          # 样式（含暗色模式）
-│   └── utils/
-│       ├── ai-trans.js        # AI API 流式调用（全页/选中文字）与 Markdown 渲染
-│       └── page-extractor.js  # 页面信息提取函数（popup 与 SW 共享）
-└── assets/
-    └── icons/                 # 扩展图标
+│   ├── utils/
+│   │   ├── constants.js       # 全局常量（默认值、超时、存储键、供应商预设等）
+│   │   ├── ai-trans.js        # AI API 流式调用（SSE 全页/选中文字分析）
+│   │   ├── markdown.js        # Markdown → HTML 安全渲染（XSS 防护）
+│   │   └── page-extractor.js  # 页面信息提取函数 + executeScript 注入包装
+│   └── assets/
+│       └── icons/             # 扩展图标
 ```
 
 ## 技术栈
@@ -90,6 +97,7 @@ search-web-info/
 
 ### 2026-06-09
 
-- **UX 优化**：增加取消按钮可中断分析、密码小眼睛切换明文/密文、暗色模式 blockquote 适配、复制降级检查、executeScript 15 秒超时、预设供应商 URL 可编辑
-- **Bug 修复**：Markdown 渲染器重构为分块处理（块级元素不再嵌套在 `<p>` 内）、修复表格表头数据重复、修复 rAF 流式竞态、修复流式结束后 UI 可能不更新、修复 storage 监听器泄漏、修复 SW 页面提取缺少超时、修复 HTML 转义未处理双引号、修复未捕获的 Promise rejection、修复 lastError 静默忽略、修复链接缺少 noopener、修复 URL 校验代码重复、修复原生控件暗色模式、修复 AbortSignal 监听器泄漏、JSDoc 补全、有序列表支持任意数字、表格表头提取优化、噪音移除选择器增强、escapeHtml 统一到 utils
-- **功能**：右键菜单增加选中文字分析、历史记录（最近 10 次，关闭浏览器自动清空）
+- **功能**：AI 参数可配置（Temperature / maxTokens / 自定义系统提示词）、扩展图标 Badge 状态提示、AI 分析完成 Chrome 桌面通知（点击打开弹窗）、Markdown 导出下载、历史记录单条删除、右键选中文字 AI 分析
+- **架构重构**：新增 constants.js 集中管理全局常量、新增 markdown.js 解耦 Markdown 渲染、消除 popup 与 SW 间重复代码（通用监听器/处理器/存储函数）、提取共享 extractPageInfo
+- **UX 优化**：取消按钮可中断分析、密码小眼睛切换明文/密文、暗色模式适配、复制降级、预设供应商 URL 可编辑
+- **Bug 修复**：Markdown 渲染器重构为分块处理、表格表头数据重复、rAF 流式竞态、storage 监听器泄漏、SW 页面提取缺超时、HTML 转义未处理双引号、未捕获 Promise rejection、链接缺少 noopener、AbortSignal 监听器泄漏、历史记录加载时序

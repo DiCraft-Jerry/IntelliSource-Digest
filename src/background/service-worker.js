@@ -60,12 +60,14 @@ async function handleContextMenuClick(tab) {
 
   // 标记分析中
   await storeResult({ status: 'analyzing', url: tab.url });
+  setBadge(tab.id, '...', '#6366f1');
 
   try {
     // 读取 API 配置
     const { apiConfig } = await chrome.storage.local.get(['apiConfig']);
     if (!apiConfig?.apiUrl || !apiConfig?.apiKey || !apiConfig?.model) {
       await storeResult({ error: '请先点击扩展图标配置 AI API 参数', url: tab.url });
+      clearBadge(tab.id);
       return;
     }
 
@@ -77,8 +79,10 @@ async function handleContextMenuClick(tab) {
 
     // 存储成功结果
     await storeResult({ status: 'done', url: tab.url, pageInfo, summary });
+    clearBadge(tab.id);
   } catch (error) {
     await storeResult({ status: 'done', url: tab.url, pageInfo: null, summary: null, error: error.message });
+    clearBadge(tab.id);
   }
 }
 
@@ -102,12 +106,14 @@ async function handleSelectionMenuClick(tab, selectedText) {
 
   // 标记分析中
   await storeSelectionResult({ status: 'analyzing', url: tab.url, selectedText });
+  setBadge(tab.id, '...', '#6366f1');
 
   try {
     // 读取 API 配置
     const { apiConfig } = await chrome.storage.local.get(['apiConfig']);
     if (!apiConfig?.apiUrl || !apiConfig?.apiKey || !apiConfig?.model) {
       await storeSelectionResult({ error: '请先点击扩展图标配置 AI API 参数', url: tab.url, selectedText });
+      clearBadge(tab.id);
       return;
     }
 
@@ -130,8 +136,10 @@ async function handleSelectionMenuClick(tab, selectedText) {
 
     // 存储成功结果
     await storeSelectionResult({ status: 'done', url: tab.url, selectedText, summary });
+    clearBadge(tab.id);
   } catch (error) {
     await storeSelectionResult({ status: 'done', url: tab.url, selectedText, summary: null, error: error.message });
+    clearBadge(tab.id);
   }
 }
 
@@ -186,6 +194,17 @@ async function getSelectionResult() {
   } catch {
     return null;
   }
+}
+
+// ========== Badge 辅助函数 ==========
+
+function setBadge(tabId, text, color) {
+  chrome.action.setBadgeText({ text, tabId }).catch(() => {});
+  chrome.action.setBadgeBackgroundColor({ color, tabId }).catch(() => {});
+}
+
+function clearBadge(tabId) {
+  chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
 }
 
 // ========== 尝试打开 popup ==========

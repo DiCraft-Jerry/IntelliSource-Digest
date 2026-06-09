@@ -86,6 +86,7 @@ const els = {
   aiCard: document.getElementById('aiCard'),
   summaryContent: document.getElementById('summaryContent'),
   copyBtn: document.getElementById('copyBtn'),
+  exportBtn: document.getElementById('exportBtn'),
   reExtractBtn: document.getElementById('reExtractBtn'),
   historyDetails: document.getElementById('historyDetails'),
   historyCount: document.getElementById('historyCount'),
@@ -98,6 +99,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   const config = await loadConfig();
   applyConfigToForm(config);
+
+  // 清除当前标签页 Badge（用户已打开 popup 查看结果）
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id) {
+    chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
+  }
 
   // 优先检查右键菜单预计算结果（来自 Service Worker 后台分析）
   const contextResult = await loadContextMenuResultRaw();
@@ -289,6 +296,11 @@ function bindEvents() {
         }, 1500);
       }
     }
+  });
+
+  // 导出 AI 总结为 Markdown 文件
+  els.exportBtn.addEventListener('click', () => {
+    handleExport();
   });
 }
 
@@ -922,6 +934,38 @@ function renderSummary(summaryText) {
 }
 
 // ========== UI 辅助 ==========
+
+// ========== Markdown 导出 ==========
+
+function handleExport() {
+  if (!currentSummaryText) return;
+
+  // 构造文件名（去除非法字符）
+  const rawTitle = els.pageTitle.textContent || '';
+  const filename = (rawTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, 80) || 'ai-summary') + '.md';
+
+  try {
+    const blob = new Blob([currentSummaryText], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // 反馈
+    els.exportBtn.querySelector('span').textContent = '已导出';
+    els.exportBtn.classList.add('exported');
+    setTimeout(() => {
+      els.exportBtn.querySelector('span').textContent = '导出';
+      els.exportBtn.classList.remove('exported');
+    }, 1500);
+  } catch {
+    // 静默失败
+  }
+}
 
 function showLoading(text) {
   els.loading.style.display = '';

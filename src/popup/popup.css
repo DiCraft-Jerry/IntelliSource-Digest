@@ -250,6 +250,12 @@ body {
   background: var(--color-surface);
 }
 
+.export-btn.exported {
+  color: var(--color-success);
+  border-color: var(--color-success);
+  background: var(--color-surface);
+}
+
 .card-body {
   padding: 12px 16px 14px;
 }

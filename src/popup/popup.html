@@ -207,6 +207,54 @@
           <select id="modelSelect" class="model-select" size="5" style="display:none;"></select>
           <span class="field-hint" id="modelHint"></span>
         </div>
+        <!-- 高级参数 -->
+        <div class="form-group">
+          <label for="temperature">Temperature (随机性)</label>
+          <div class="input-row">
+            <input
+              type="range"
+              id="temperatureRange"
+              min="0"
+              max="2"
+              step="0.1"
+              value="0.7"
+            >
+            <input
+              type="number"
+              id="temperature"
+              min="0"
+              max="2"
+              step="0.1"
+              placeholder="0.7"
+              autocomplete="off"
+              class="input-narrow"
+            >
+          </div>
+          <span class="field-hint">0=精确确定，2=最大随机性，默认 0.7</span>
+        </div>
+        <div class="form-group">
+          <label for="maxTokens">最大输出长度 (tokens)</label>
+          <input
+            type="number"
+            id="maxTokens"
+            min="1"
+            max="16384"
+            step="1"
+            placeholder="2000"
+            autocomplete="off"
+          >
+          <span class="field-hint">控制 AI 回复的最大长度，默认 2000</span>
+        </div>
+        <div class="form-group">
+          <label for="systemPrompt">自定义系统提示词</label>
+          <textarea
+            id="systemPrompt"
+            rows="4"
+            maxlength="4000"
+            placeholder="留空则使用内置提示词（自动分析网页内容）"
+          ></textarea>
+          <span class="field-hint">可选，自定义 AI 的分析风格和输出格式</span>
+        </div>
         <button class="btn btn-primary" id="saveSettingsBtn">保存设置</button>
         <p class="hint">API Key 仅保存在本地浏览器存储中，不会上传到任何第三方</p>
       </div>

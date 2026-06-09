@@ -1,3 +1,24 @@
+import { TIMEOUTS } from './constants.js';
+
+/**
+ * 从指定标签页提取页面信息（在 popup 和 SW 中复用）
+ * 使用 chrome.scripting.executeScript 注入 extractPageInfoFunc 并设置超时
+ * @param {number} tabId
+ * @returns {Promise<{ title: string, description: string, bodyText: string, tables: Array, links: Array }>}
+ */
+export async function extractPageInfo(tabId) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('页面提取超时，请刷新页面后重试')), TIMEOUTS.extraction)
+  );
+  const injection = chrome.scripting.executeScript({
+    target: { tabId },
+    func: extractPageInfoFunc,
+  });
+  const results = await Promise.race([injection, timeout]);
+  if (results?.[0]?.result) return results[0].result;
+  throw new Error('无法从当前页面提取信息，请刷新页面后重试');
+}
+
 /**
  * 页面信息提取函数（被注入到目标页面中执行）
  * 独立声明，确保 Chrome scripting.executeScript 可正确序列化

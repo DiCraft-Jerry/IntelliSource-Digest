@@ -4,46 +4,14 @@
  * 优先通过消息通信提取，失败时自动降级为 chrome.scripting.executeScript 注入
  * 使用 chrome.storage.session 缓存结果，同页面重复打开不重抓
  */
-import { summarizePageInfoStream, renderMarkdown, validateApiUrl, escapeHtml } from '../utils/ai-trans.js';
-import { extractPageInfoFunc } from '../utils/page-extractor.js';
+import { summarizePageInfoStream, validateApiUrl } from '../utils/ai-trans.js';
+import { renderMarkdown, escapeHtml } from '../utils/markdown.js';
+import { extractPageInfo } from '../utils/page-extractor.js';
+import { STORAGE_KEYS, TIMEOUTS, SIZES, UI, DEFAULTS, isRestrictedUrl, PROVIDERS } from '../utils/constants.js';
 
 // 当前 AI 总结原始文本（供复制按钮使用）
 let currentSummaryText = '';
 let abortController = null;
-
-// 主流 AI 供应商的默认配置
-const PROVIDERS = {
-  openai: {
-    name: 'OpenAI',
-    url: 'https://api.openai.com/v1/chat/completions',
-    model: 'gpt-4o',
-  },
-  deepseek: {
-    name: 'DeepSeek',
-    url: 'https://api.deepseek.com/v1/chat/completions',
-    model: 'deepseek-chat',
-  },
-  qwen: {
-    name: '通义千问',
-    url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    model: 'qwen-plus',
-  },
-  moonshot: {
-    name: 'Moonshot',
-    url: 'https://api.moonshot.cn/v1/chat/completions',
-    model: 'moonshot-v1-8k',
-  },
-  zhipu: {
-    name: '智谱 GLM',
-    url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    model: 'glm-4',
-  },
-  custom: {
-    name: '自定义',
-    url: '',
-    model: '',
-  },
-};
 
 // DOM 元素引用
 const els = {
@@ -69,6 +37,10 @@ const els = {
   fetchModelsBtn: document.getElementById('fetchModelsBtn'),
   modelSelect: document.getElementById('modelSelect'),
   modelHint: document.getElementById('modelHint'),
+  temperatureRange: document.getElementById('temperatureRange'),
+  temperature: document.getElementById('temperature'),
+  maxTokens: document.getElementById('maxTokens'),
+  systemPrompt: document.getElementById('systemPrompt'),
   testConnGroup: document.getElementById('testConnGroup'),
   testConnBtn: document.getElementById('testConnBtn'),
   testResult: document.getElementById('testResult'),
@@ -116,13 +88,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (contextResult.status === 'analyzing') {
       hideAll();
       showLoading('正在 AI 分析中，请稍候...');
-      listenForContextMenuResult();
+      listenForStorageResult(STORAGE_KEYS.contextMenuResult, displayContextMenuResult);
       await renderHistoryList();
       return;
     }
     if (contextResult.status === 'done') {
       displayContextMenuResult(contextResult);
-      await chrome.storage.session.remove(['contextMenuResult']).catch(() => {});
+      await chrome.storage.session.remove([STORAGE_KEYS.contextMenuResult]).catch(() => {});
       await renderHistoryList();
       return;
     }
@@ -134,13 +106,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (selectionResult.status === 'analyzing') {
       hideAll();
       showLoading('正在 AI 分析中，请稍候...');
-      listenForSelectionResult();
+      listenForStorageResult(STORAGE_KEYS.contextMenuSelectionResult, displaySelectionResult);
       await renderHistoryList();
       return;
     }
     if (selectionResult.status === 'done') {
       displaySelectionResult(selectionResult);
-      await chrome.storage.session.remove(['contextMenuSelectionResult']).catch(() => {});
+      await chrome.storage.session.remove([STORAGE_KEYS.contextMenuSelectionResult]).catch(() => {});
       await renderHistoryList();
       return;
     }
@@ -276,12 +248,7 @@ function bindEvents() {
     if (!currentSummaryText) return;
     try {
       await navigator.clipboard.writeText(currentSummaryText);
-      els.copyBtn.querySelector('span').textContent = '已复制';
-      els.copyBtn.classList.add('copied');
-      setTimeout(() => {
-        els.copyBtn.querySelector('span').textContent = '复制';
-        els.copyBtn.classList.remove('copied');
-      }, 1500);
+      showTemporaryButtonFeedback(els.copyBtn, '复制', '已复制', 'copied');
     } catch {
       // 降级：用 textarea fallback
       const ta = document.createElement('textarea');
@@ -292,12 +259,7 @@ function bindEvents() {
       const copied = document.execCommand('copy');
       ta.remove();
       if (copied) {
-        els.copyBtn.querySelector('span').textContent = '已复制';
-        els.copyBtn.classList.add('copied');
-        setTimeout(() => {
-          els.copyBtn.querySelector('span').textContent = '复制';
-          els.copyBtn.classList.remove('copied');
-        }, 1500);
+        showTemporaryButtonFeedback(els.copyBtn, '复制', '已复制', 'copied');
       }
     }
   });
@@ -305,6 +267,17 @@ function bindEvents() {
   // 导出 AI 总结为 Markdown 文件
   els.exportBtn.addEventListener('click', () => {
     handleExport();
+  });
+
+  // temperature 滑块与数字输入双向同步
+  els.temperatureRange.addEventListener('input', () => {
+    els.temperature.value = els.temperatureRange.value;
+  });
+  els.temperature.addEventListener('input', () => {
+    const val = parseFloat(els.temperature.value);
+    if (!isNaN(val) && val >= 0 && val <= 2) {
+      els.temperatureRange.value = val;
+    }
   });
 }
 
@@ -323,12 +296,18 @@ function switchToMain() {
 // ========== 配置管理 ==========
 
 async function loadConfig() {
-  const result = await chrome.storage.local.get(['apiConfig']);
-  return result.apiConfig || { provider: 'openai', apiUrl: '', apiKey: '', model: 'gpt-4o' };
+  const result = await chrome.storage.local.get([STORAGE_KEYS.apiConfig]);
+  const base = result[STORAGE_KEYS.apiConfig] || {
+    provider: DEFAULTS.provider, apiUrl: '', apiKey: '', model: DEFAULTS.model,
+  };
+  if (base.temperature === undefined) base.temperature = DEFAULTS.temperature;
+  if (base.maxTokens === undefined) base.maxTokens = DEFAULTS.maxTokens;
+  if (base.systemPrompt === undefined) base.systemPrompt = DEFAULTS.systemPrompt;
+  return base;
 }
 
 async function saveConfig(config) {
-  await chrome.storage.local.set({ apiConfig: config });
+  await chrome.storage.local.set({ [STORAGE_KEYS.apiConfig]: config });
   showError('');
 }
 
@@ -348,16 +327,22 @@ function getConfigFromForm() {
     apiUrl = els.apiUrl.value.trim();
   }
 
+  const temperature = parseFloat(els.temperature.value);
+  const maxTokens = parseInt(els.maxTokens.value, 10);
+
   return {
     provider,
     apiUrl,
     apiKey: els.apiKey.value.trim(),
     model: els.model.value.trim(),
+    temperature: isNaN(temperature) ? DEFAULTS.temperature : temperature,
+    maxTokens: isNaN(maxTokens) ? DEFAULTS.maxTokens : maxTokens,
+    systemPrompt: els.systemPrompt.value.trim(),
   };
 }
 
 function applyConfigToForm(config) {
-  els.provider.value = config.provider || 'openai';
+  els.provider.value = config.provider || DEFAULTS.provider;
   els.apiKey.value = config.apiKey || '';
 
   if (config.provider && config.provider !== 'custom') {
@@ -410,6 +395,13 @@ function applyConfigToForm(config) {
   els.customUrlHint.className = 'field-hint';
   els.testConnGroup.style.display = '';
   clearTestResult();
+
+  // 高级参数
+  const temperature = config.temperature ?? DEFAULTS.temperature;
+  els.temperature.value = temperature;
+  els.temperatureRange.value = temperature;
+  els.maxTokens.value = config.maxTokens ?? DEFAULTS.maxTokens;
+  els.systemPrompt.value = config.systemPrompt || '';
 }
 
 function validateConfig(config) {
@@ -423,6 +415,15 @@ function validateConfig(config) {
       return e.message;
     }
   }
+  if (typeof config.temperature === 'number' && (config.temperature < 0 || config.temperature > 2)) {
+    return 'Temperature 必须在 0 到 2 之间';
+  }
+  if (config.maxTokens !== undefined && config.maxTokens !== '' && (!Number.isInteger(config.maxTokens) || config.maxTokens < 1)) {
+    return '最大输出长度必须为正整数';
+  }
+  if (config.systemPrompt && config.systemPrompt.length > SIZES.systemPromptMax) {
+    return '自定义系统提示词不能超过 4000 字符';
+  }
   return null;
 }
 
@@ -430,7 +431,7 @@ function validateConfig(config) {
 
 async function checkCache(tab) {
   try {
-    const { cachedResult } = await chrome.storage.session.get(['cachedResult']);
+    const { [STORAGE_KEYS.cachedResult]: cachedResult } = await chrome.storage.session.get([STORAGE_KEYS.cachedResult]);
     if (
       cachedResult &&
       cachedResult.tabId === tab.id &&
@@ -447,7 +448,7 @@ async function checkCache(tab) {
 async function saveCache(tab, pageInfo, summary) {
   try {
     await chrome.storage.session.set({
-      cachedResult: { tabId: tab.id, url: tab.url, pageInfo, summary },
+      [STORAGE_KEYS.cachedResult]: { tabId: tab.id, url: tab.url, pageInfo, summary },
     });
   } catch {
     // 写入失败静默忽略
@@ -460,9 +461,8 @@ async function saveCache(tab, pageInfo, summary) {
  */
 async function loadContextMenuResultRaw() {
   try {
-    const { contextMenuResult } = await chrome.storage.session.get(['contextMenuResult']);
-    if (!contextMenuResult) return null;
-    return contextMenuResult;
+    const { [STORAGE_KEYS.contextMenuResult]: result } = await chrome.storage.session.get([STORAGE_KEYS.contextMenuResult]);
+    return result || null;
   } catch {
     return null;
   }
@@ -495,10 +495,12 @@ function displayContextMenuResult(result) {
 }
 
 /**
- * 监听 storage.session 中 contextMenuResult 的变更
+ * 通用：监听 storage.session 中指定键的变更
  * Service Worker 写入结果后 popup 自动更新 UI
+ * @param {string} storageKey - storage.session 中的键名
+ * @param {(result: object) => void} displayFn - 展示结果的回调
  */
-function listenForContextMenuResult() {
+function listenForStorageResult(storageKey, displayFn) {
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
@@ -507,7 +509,7 @@ function listenForContextMenuResult() {
   };
   const handler = async (changes, areaName) => {
     if (areaName !== 'session') return;
-    const change = changes.contextMenuResult;
+    const change = changes[storageKey];
     if (!change?.newValue) return;
 
     cleanup();
@@ -518,13 +520,13 @@ function listenForContextMenuResult() {
     if (tab?.url !== result.url) return;
 
     if (result.status === 'done') {
-      displayContextMenuResult(result);
-      await chrome.storage.session.remove(['contextMenuResult']).catch(() => {});
+      displayFn(result);
+      await chrome.storage.session.remove([storageKey]).catch(() => {});
     }
   };
   chrome.storage.onChanged.addListener(handler);
-  // 120 秒安全超时，防止 SW 崩溃导致监听器永久泄漏
-  setTimeout(cleanup, 120000);
+  // 安全超时，防止 SW 崩溃导致监听器永久泄漏
+  setTimeout(cleanup, TIMEOUTS.storageListener);
 }
 
 // ========== 选中文字右键菜单结果处理 ==========
@@ -535,9 +537,8 @@ function listenForContextMenuResult() {
  */
 async function loadSelectionResultRaw() {
   try {
-    const { contextMenuSelectionResult } = await chrome.storage.session.get(['contextMenuSelectionResult']);
-    if (!contextMenuSelectionResult) return null;
-    return contextMenuSelectionResult;
+    const { [STORAGE_KEYS.contextMenuSelectionResult]: result } = await chrome.storage.session.get([STORAGE_KEYS.contextMenuSelectionResult]);
+    return result || null;
   } catch {
     return null;
   }
@@ -559,8 +560,8 @@ function displaySelectionResult(result) {
   let contentHtml = '';
 
   if (result.selectedText) {
-    const displayText = result.selectedText.length > 800
-      ? result.selectedText.substring(0, 800) + '...'
+    const displayText = result.selectedText.length > SIZES.selectedTextDisplayMax
+      ? result.selectedText.substring(0, SIZES.selectedTextDisplayMax) + '...'
       : result.selectedText;
     contentHtml += `<blockquote class="selected-quote">${escapeHtml(displayText)}</blockquote>`;
   }
@@ -584,58 +585,6 @@ function displaySelectionResult(result) {
   }).then(() => renderHistoryList()).catch(() => {});
 }
 
-/**
- * 监听 storage.session 中 contextMenuSelectionResult 的变更
- */
-function listenForSelectionResult() {
-  let cleaned = false;
-  const cleanup = () => {
-    if (cleaned) return;
-    cleaned = true;
-    chrome.storage.onChanged.removeListener(handler);
-  };
-  const handler = async (changes, areaName) => {
-    if (areaName !== 'session') return;
-    const change = changes.contextMenuSelectionResult;
-    if (!change?.newValue) return;
-
-    cleanup();
-
-    const result = change.newValue;
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.url !== result.url) return;
-
-    if (result.status === 'done') {
-      displaySelectionResult(result);
-      await chrome.storage.session.remove(['contextMenuSelectionResult']).catch(() => {});
-    }
-  };
-  chrome.storage.onChanged.addListener(handler);
-  // 120 秒安全超时，防止 SW 崩溃导致监听器永久泄漏
-  setTimeout(cleanup, 120000);
-}
-
-// ========== 页面信息提取（chrome.scripting.executeScript 直接注入执行） ==========
-
-/**
- * 提取页面信息：统一使用 chrome.scripting.executeScript 直接注入函数执行
- * 不走 chrome.tabs.sendMessage 消息通道，彻底避免旧 content script
- * 孤立后 onMessage 监听器 return true 导致的 channel closed 报错
- * @param {number} tabId
- * @returns {Promise<{ title: string, description: string, bodyText: string, tables: Array, links: Array }>}
- */
-async function extractPageInfo(tabId) {
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('页面提取超时，请刷新页面后重试')), 15000)
-  );
-  const injection = chrome.scripting.executeScript({
-    target: { tabId },
-    func: extractPageInfoFunc,
-  });
-  const results = await Promise.race([injection, timeout]);
-  if (results?.[0]?.result) return results[0].result;
-  throw new Error('无法从当前页面提取信息，请刷新页面后重试');
-}
 
 // ========== 连通性测试 ==========
 
@@ -676,7 +625,7 @@ async function testConnection() {
   setTestResult('loading', '正在测试...');
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), TIMEOUTS.connectTest);
 
   try {
     const response = await fetch(apiUrl, {
@@ -686,7 +635,7 @@ async function testConnection() {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || 'gpt-4o',
+        model: model || DEFAULTS.model,
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: 1,
       }),
@@ -771,7 +720,7 @@ async function fetchModels() {
   els.modelHint.className = 'field-hint';
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), TIMEOUTS.connectTest);
 
   try {
     const response = await fetch(modelsUrl, {
@@ -826,7 +775,7 @@ async function runExtraction({ forceRefresh }) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('无法获取当前标签页');
-    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://') || tab.url?.startsWith('about:')) {
+    if (isRestrictedUrl(tab.url)) {
       throw new Error('无法在 Chrome 内部页面使用，请打开普通网页');
     }
 
@@ -909,7 +858,7 @@ function renderPageInfo(pageInfo) {
   els.linkCount.textContent = `${pageInfo.links.length} 个`;
 
   els.linkList.innerHTML = '';
-  const linksToShow = pageInfo.links.slice(0, 100);
+  const linksToShow = pageInfo.links.slice(0, SIZES.linkDisplayMax);
   linksToShow.forEach((link) => {
     const li = document.createElement('li');
     const a = document.createElement('a');
@@ -922,9 +871,9 @@ function renderPageInfo(pageInfo) {
     els.linkList.appendChild(li);
   });
 
-  if (pageInfo.links.length > 100) {
+  if (pageInfo.links.length > SIZES.linkDisplayMax) {
     const note = document.createElement('li');
-    note.textContent = `... 还有 ${pageInfo.links.length - 100} 个链接未展示`;
+    note.textContent = `... 还有 ${pageInfo.links.length - SIZES.linkDisplayMax} 个链接未展示`;
     note.style.cssText = 'color:#94a3b8;list-style:none;';
     els.linkList.appendChild(note);
   }
@@ -939,6 +888,22 @@ function renderSummary(summaryText) {
 
 // ========== UI 辅助 ==========
 
+/**
+ * 按钮临时反馈：切换文字和样式，自动恢复
+ * @param {HTMLElement} btn - 按钮元素
+ * @param {string} originalText - 原始文字
+ * @param {string} feedbackText - 反馈文字
+ * @param {string} feedbackClass - 反馈时添加的 CSS class
+ */
+function showTemporaryButtonFeedback(btn, originalText, feedbackText, feedbackClass) {
+  btn.querySelector('span').textContent = feedbackText;
+  btn.classList.add(feedbackClass);
+  setTimeout(() => {
+    btn.querySelector('span').textContent = originalText;
+    btn.classList.remove(feedbackClass);
+  }, UI.buttonFeedbackMs);
+}
+
 // ========== Markdown 导出 ==========
 
 function handleExport() {
@@ -946,7 +911,7 @@ function handleExport() {
 
   // 构造文件名（去除非法字符）
   const rawTitle = els.pageTitle.textContent || '';
-  const filename = (rawTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, 80) || 'ai-summary') + '.md';
+  const filename = (rawTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, SIZES.titlePrefixMax) || 'ai-summary') + '.md';
 
   try {
     const blob = new Blob([currentSummaryText], { type: 'text/markdown;charset=utf-8' });
@@ -960,12 +925,7 @@ function handleExport() {
     URL.revokeObjectURL(url);
 
     // 反馈
-    els.exportBtn.querySelector('span').textContent = '已导出';
-    els.exportBtn.classList.add('exported');
-    setTimeout(() => {
-      els.exportBtn.querySelector('span').textContent = '导出';
-      els.exportBtn.classList.remove('exported');
-    }, 1500);
+    showTemporaryButtonFeedback(els.exportBtn, '导出', '已导出', 'exported');
   } catch {
     // 静默失败
   }
@@ -998,9 +958,6 @@ function hideAll() {
 
 // ========== 历史记录管理 ==========
 
-const MAX_HISTORY = 10;
-const HISTORY_KEY = 'analysisHistory';
-
 async function saveToHistory(entry) {
   try {
     const history = await getHistory();
@@ -1010,8 +967,8 @@ async function saveToHistory(entry) {
     );
     if (isDuplicate) return;
     history.unshift(entry);
-    if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
-    await chrome.storage.session.set({ [HISTORY_KEY]: history });
+    if (history.length > SIZES.historyMax) history.length = SIZES.historyMax;
+    await chrome.storage.session.set({ [STORAGE_KEYS.analysisHistory]: history });
   } catch {
     // 写入失败静默忽略
   }
@@ -1019,8 +976,8 @@ async function saveToHistory(entry) {
 
 async function getHistory() {
   try {
-    const result = await chrome.storage.session.get([HISTORY_KEY]);
-    return result[HISTORY_KEY] || [];
+    const result = await chrome.storage.session.get([STORAGE_KEYS.analysisHistory]);
+    return result[STORAGE_KEYS.analysisHistory] || [];
   } catch {
     return [];
   }
@@ -1031,7 +988,7 @@ async function deleteHistoryEntry(index) {
     const history = await getHistory();
     if (index >= 0 && index < history.length) {
       history.splice(index, 1);
-      await chrome.storage.session.set({ [HISTORY_KEY]: history });
+      await chrome.storage.session.set({ [STORAGE_KEYS.analysisHistory]: history });
     }
   } catch {
     // 删除失败静默忽略
@@ -1053,7 +1010,7 @@ async function renderHistoryList() {
       const title = entry.title || entry.url || '未知页面';
       const domain = getDomain(entry.url);
       const time = formatRelativeTime(entry.timestamp);
-      const preview = (entry.summary || '').replace(/\n/g, ' ').substring(0, 60);
+      const preview = (entry.summary || '').replace(/\n/g, ' ').substring(0, SIZES.summaryPreviewMax);
       return `
         <div class="history-item" data-index="${index}">
           <button class="history-item-delete" data-index="${index}" title="删除此记录">&times;</button>
@@ -1099,8 +1056,8 @@ function loadHistoryEntry(entry) {
   } else if (entry.type === 'selection') {
     let contentHtml = '';
     if (entry.selectedText) {
-      const displayText = entry.selectedText.length > 800
-        ? entry.selectedText.substring(0, 800) + '...'
+      const displayText = entry.selectedText.length > SIZES.selectedTextDisplayMax
+        ? entry.selectedText.substring(0, SIZES.selectedTextDisplayMax) + '...'
         : entry.selectedText;
       contentHtml += `<blockquote class="selected-quote">${escapeHtml(displayText)}</blockquote>`;
     }

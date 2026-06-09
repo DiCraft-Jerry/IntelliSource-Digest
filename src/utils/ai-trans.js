@@ -107,7 +107,11 @@ async function parseErrorResponse(response) {
     // 非 JSON，直接使用文本内容
   }
 
-  const preview = text.substring(0, SIZES.errorPreviewMax);
+  // 检测是否为 HTML 响应（API 地址可能指向了网页而非 API 端点）
+  const isHtml = text.trim().startsWith('<!') || text.trim().startsWith('<html');
+  const preview = isHtml
+    ? '服务器返回了网页而非 API 响应，请检查 API 地址是否正确'
+    : text.substring(0, SIZES.errorPreviewMax || 300);
 
   // 针对常见 HTTP 状态码给出排查建议
   let hint = '';

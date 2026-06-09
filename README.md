@@ -85,3 +85,11 @@ search-web-info/
 - API Key 仅存储在 `chrome.storage.local`，完全在浏览器本地
 - 网页数据仅发送给你配置的 AI API 端点
 - 不收集任何使用数据或遥测信息
+
+## 更新日志
+
+### 2026-06-09
+
+- **UX 优化**：增加取消按钮可中断分析、密码小眼睛切换明文/密文、暗色模式 blockquote 适配、复制降级检查、executeScript 15 秒超时、预设供应商 URL 可编辑
+- **Bug 修复**：Markdown 渲染器重构为分块处理（块级元素不再嵌套在 `<p>` 内）、修复表格表头数据重复、修复 rAF 流式竞态、修复流式结束后 UI 可能不更新、修复 storage 监听器泄漏、修复 SW 页面提取缺少超时、修复 HTML 转义未处理双引号、修复未捕获的 Promise rejection、修复 lastError 静默忽略、修复链接缺少 noopener、修复 URL 校验代码重复、修复原生控件暗色模式、修复 AbortSignal 监听器泄漏、JSDoc 补全、有序列表支持任意数字、表格表头提取优化、噪音移除选择器增强、escapeHtml 统一到 utils
+- **功能**：右键菜单增加选中文字分析、历史记录（最近 10 次，关闭浏览器自动清空）

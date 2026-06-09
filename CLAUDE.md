@@ -35,6 +35,24 @@
 - 关闭浏览器后自动清空（session 级别存储）
 - 条目格式：`{ type, url, title, summary, pageInfo?, selectedText?, timestamp }`
 
+### 常量管理规范
+- 所有跨模块共享的默认值、超时时间、尺寸限制、存储键、菜单 ID 必须定义在 `src/utils/constants.js`
+- 禁止在业务代码中硬编码魔法数字或裸字符串（如 storage key、超时毫秒数、截断长度）
+- 新增常量时先检查 constants.js 中是否有语义相近的可复用
+- 唯一例外：`extractPageInfoFunc` 中的硬编码限制（该函数被序列化注入目标页面，无法 import）
+
+### AI 参数规范
+- `apiConfig` 对象包含：`provider`、`apiUrl`、`apiKey`、`model`、`temperature`、`maxTokens`、`systemPrompt`
+- `temperature` 默认 0.7（0-2），`maxTokens` 默认 2000（正整数），`systemPrompt` 默认空（空 = 使用内置提示词）
+- Service Worker 中 `chrome.storage.local.get(['apiConfig'])` 透传整个 config 给 summarize 函数，无需单独处理新字段
+- 自定义 systemPrompt 优先于内置 SYSTEM_PROMPT / SELECTION_SYSTEM_PROMPT
+
+### Badge 与通知规范
+- 后台分析期间使用 `chrome.action.setBadgeText` 在图标上显示 `...`，颜色 `#6366f1`（常量 `UI.badgeColor`）
+- 分析完成后调用 `chrome.notifications.create` 弹出桌面通知，内容截断使用 `SIZES` 常量
+- `chrome.action.openPopup()` 必须在任何 `await` 之前调用（用户手势在 await 后丢失）
+- Popup 打开后立即清除当前标签页 Badge 和所有通知
+
 ### API 使用规范
 - 所有 Chrome API 调用推荐使用 Promise 封装或直接使用 `async/await`（Manifest V3 原生支持 Promise 风格调用）
 - 敏感权限（如 `tabs`、`storage`、`activeTab` 等）遵循最小权限原则，仅声明实际使用的权限
@@ -46,6 +64,7 @@
 - 每个功能模块独立文件，通过 ES Modules (`import`/`export`) 组织代码
 - 文件命名使用 kebab-case（如 `content-script.js`、`api-handler.js`）
 - 公共工具函数抽取到 `utils/` 目录，禁止跨模块复制粘贴代码
+- 新增功能模块时优先复用 constants.js 中的常量、markdown.js 中的渲染、page-extractor.js 中的 extractPageInfo
 
 ### 现代化
 - 统一使用 `const`/`let`，禁止 `var`
@@ -73,11 +92,13 @@ search-web-info/
 │   │   └── service-worker.js   # Service Worker（右键菜单、后台分析）
 │   ├── popup/
 │   │   ├── popup.html          # 弹窗界面（主视图 + 设置视图）
-│   │   ├── popup.js            # 弹窗逻辑（抓取、配置、缓存、右键结果检测）
-│   │   └── popup.css           # 样式（含暗色模式与 reduced-motion）
+│   │   ├── popup.js            # 弹窗逻辑（抓取、配置、缓存、历史、右键结果检测）
+│   │   └── popup.css           # 样式（含暗色模式）
 │   ├── utils/
-│   │   ├── ai-trans.js         # AI API 流式调用（全页/选中文字）+ Markdown → HTML 渲染
-│   │   └── page-extractor.js   # 页面信息提取函数（popup 与 SW 共享注入）
+│   │   ├── constants.js        # 全局常量（默认值、超时、存储键、供应商预设、工具函数）
+│   │   ├── ai-trans.js         # AI API 流式调用（SSE 全页/选中文字分析）
+│   │   ├── markdown.js         # Markdown → HTML 安全渲染（XSS 防护）
+│   │   └── page-extractor.js   # 页面提取注入函数 + executeScript 包装（popup/SW 共享）
 │   └── assets/
 │       └── icons/
 ├── CLAUDE.md

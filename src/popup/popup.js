@@ -109,7 +109,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.notifications.getAll((notifications) => {
     Object.keys(notifications).forEach((id) => chrome.notifications.clear(id));
   });
-  }
 
   // 优先检查右键菜单预计算结果（来自 Service Worker 后台分析）
   const contextResult = await loadContextMenuResultRaw();

@@ -64,6 +64,16 @@ const els = {
   historyCount: document.getElementById('historyCount'),
   historyList: document.getElementById('historyList'),
   cancelBtn: document.getElementById('cancelBtn'),
+  // 欢迎引导
+  welcomeCard: document.getElementById('welcomeCard'),
+  welcomeStartBtn: document.getElementById('welcomeStartBtn'),
+  // 历史记录提示条
+  historyBanner: document.getElementById('historyBanner'),
+  backToCurrentBtn: document.getElementById('backToCurrentBtn'),
+  // Token 计数
+  tokenCount: document.getElementById('tokenCount'),
+  // Toast
+  toast: document.getElementById('toast'),
 };
 
 // ========== 初始化 ==========
@@ -124,8 +134,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (config.apiUrl && config.apiKey) {
     await runExtraction({ forceRefresh: false });
   } else {
-    // 未配置 API → 直接打开设置页
-    switchToSettings();
+    // 未配置 API → 显示欢迎引导卡片
+    hideAll();
+    els.welcomeCard.style.display = '';
   }
 });
 
@@ -136,6 +147,18 @@ function bindEvents() {
 
   // 返回按钮 → 回到主视图
   els.backBtn.addEventListener('click', () => switchToMain());
+
+  // 欢迎引导 → 开始配置
+  els.welcomeStartBtn.addEventListener('click', () => {
+    els.welcomeCard.style.display = 'none';
+    switchToSettings();
+  });
+
+  // 历史记录提示条 → 返回当前页面
+  els.backToCurrentBtn.addEventListener('click', async () => {
+    els.historyBanner.style.display = 'none';
+    await runExtraction({ forceRefresh: false });
+  });
 
   // 供应商切换 → 自动填充 URL 和模型
   els.provider.addEventListener('change', () => {
@@ -197,20 +220,40 @@ function bindEvents() {
     }
   });
 
-  // 保存设置 → 回主视图并强制重抓（防抖避免重复点击）
+  // 保存设置 → 回主视图，不强制重抓（防抖避免重复点击）
   els.saveSettingsBtn.addEventListener('click', async () => {
     if (els.saveSettingsBtn.disabled) return;
+    clearFieldErrors();
     const config = getConfigFromForm();
     const error = validateConfig(config);
     if (error) {
-      showError(error);
+      showFieldError(error.field, error.msg);
       return;
     }
     els.saveSettingsBtn.disabled = true;
     try {
       await saveConfig(config);
       switchToMain();
-      await runExtraction({ forceRefresh: true });
+      // 尝试展示缓存；若无缓存则显示空状态
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        const cached = await checkCache(tab);
+        if (cached) {
+          hideAll();
+          renderPageInfo(cached.pageInfo);
+          els.pageInfoCard.style.display = '';
+          renderSummary(cached.summary);
+          els.aiCard.style.display = '';
+          showToast('设置已保存');
+        } else {
+          hideAll();
+          showToast('设置已保存，点击"重新抓取"开始分析', '重新抓取', () => {
+            runExtraction({ forceRefresh: true });
+          });
+        }
+      } else {
+        showToast('设置已保存');
+      }
     } finally {
       els.saveSettingsBtn.disabled = false;
     }
@@ -279,18 +322,72 @@ function bindEvents() {
       els.temperatureRange.value = val;
     }
   });
+
+  // 输入框聚焦时清除该字段的内联错误
+  const clearFieldErrorOnInput = (fieldName) => {
+    const errorEl = document.querySelector(`.field-error[data-field="${fieldName}"]`);
+    if (errorEl) errorEl.classList.remove('visible');
+    const inputMap = { apiUrl: '#apiUrl', customUrl: '#customBaseUrl', apiKey: '#apiKey', model: '#model', temperature: '#temperature', maxTokens: '#maxTokens', systemPrompt: '#systemPrompt' };
+    const inputSel = inputMap[fieldName];
+    if (inputSel) {
+      const input = document.querySelector(inputSel);
+      if (input) input.classList.remove('has-error');
+    }
+  };
+
+  els.apiUrl.addEventListener('input', () => clearFieldErrorOnInput('apiUrl'));
+  els.customBaseUrl.addEventListener('input', () => clearFieldErrorOnInput('customUrl'));
+  els.apiKey.addEventListener('input', () => clearFieldErrorOnInput('apiKey'));
+  els.model.addEventListener('input', () => clearFieldErrorOnInput('model'));
+  els.temperature.addEventListener('input', () => clearFieldErrorOnInput('temperature'));
+  els.maxTokens.addEventListener('input', () => clearFieldErrorOnInput('maxTokens'));
+  els.systemPrompt.addEventListener('input', () => clearFieldErrorOnInput('systemPrompt'));
 }
 
-// ========== 视图切换 ==========
+// ========== 视图切换（带动画） ==========
+
+/**
+ * 带动画切换视图
+ * @param {HTMLElement} fromEl - 当前视图
+ * @param {HTMLElement} toEl - 目标视图
+ */
+function switchView(fromEl, toEl) {
+  if (!fromEl || !toEl || fromEl === toEl) return;
+
+  // 第一阶段：当前视图淡出
+  fromEl.classList.add('leaving');
+  const onTransitionEnd = () => {
+    fromEl.removeEventListener('transitionend', onTransitionEnd);
+    fromEl.style.display = 'none';
+    fromEl.classList.remove('leaving');
+
+    // 第二阶段：目标视图淡入
+    toEl.style.display = '';
+    toEl.classList.add('entering');
+    // 强制回流以触发 transition
+    toEl.offsetHeight;
+    toEl.classList.remove('entering');
+  };
+  fromEl.addEventListener('transitionend', onTransitionEnd);
+
+  // 安全兜底：250ms 后强制完成（transitionend 可能不触发）
+  setTimeout(() => {
+    if (fromEl.style.display !== 'none') {
+      fromEl.style.display = 'none';
+      fromEl.classList.remove('leaving');
+      toEl.style.display = '';
+      toEl.classList.remove('entering');
+    }
+  }, 250);
+}
 
 function switchToSettings() {
-  els.mainView.style.display = 'none';
-  els.settingsView.style.display = '';
+  clearFieldErrors();
+  switchView(els.mainView, els.settingsView);
 }
 
 function switchToMain() {
-  els.settingsView.style.display = 'none';
-  els.mainView.style.display = '';
+  switchView(els.settingsView, els.mainView);
 }
 
 // ========== 配置管理 ==========
@@ -405,26 +502,63 @@ function applyConfigToForm(config) {
 }
 
 function validateConfig(config) {
-  if (!config.apiUrl) return '请输入 API 地址';
-  if (!config.apiKey) return '请输入 API Key';
-  if (!config.model) return '请输入模型名称';
+  if (!config.apiUrl) return { field: config.provider === 'custom' ? 'customUrl' : 'apiUrl', msg: '请输入 API 地址' };
+  if (!config.apiKey) return { field: 'apiKey', msg: '请输入 API Key' };
+  if (!config.model) return { field: 'model', msg: '请输入模型名称' };
   if (config.provider === 'custom') {
     try {
       validateApiUrl(config.apiUrl);
     } catch (e) {
-      return e.message;
+      return { field: 'customUrl', msg: e.message };
     }
   }
   if (typeof config.temperature === 'number' && (config.temperature < 0 || config.temperature > 2)) {
-    return 'Temperature 必须在 0 到 2 之间';
+    return { field: 'temperature', msg: 'Temperature 必须在 0 到 2 之间' };
   }
   if (config.maxTokens !== undefined && config.maxTokens !== '' && (!Number.isInteger(config.maxTokens) || config.maxTokens < 1)) {
-    return '最大输出长度必须为正整数';
+    return { field: 'maxTokens', msg: '最大输出长度必须为正整数' };
   }
   if (config.systemPrompt && config.systemPrompt.length > SIZES.systemPromptMax) {
-    return '自定义系统提示词不能超过 4000 字符';
+    return { field: 'systemPrompt', msg: '自定义系统提示词不能超过 4000 字符' };
   }
   return null;
+}
+
+/**
+ * 在指定字段下方显示内联错误提示
+ * @param {string} fieldName - data-field 属性值
+ * @param {string} msg - 错误信息
+ */
+function showFieldError(fieldName, msg) {
+  const errorEl = document.querySelector(`.field-error[data-field="${fieldName}"]`);
+  if (errorEl) {
+    errorEl.textContent = msg;
+    errorEl.classList.add('visible');
+  }
+  // 给对应输入框添加红色边框
+  const inputMap = {
+    apiUrl: '#apiUrl', customUrl: '#customBaseUrl', apiKey: '#apiKey',
+    model: '#model', temperature: '#temperature', maxTokens: '#maxTokens',
+    systemPrompt: '#systemPrompt',
+  };
+  const inputSel = inputMap[fieldName];
+  if (inputSel) {
+    const input = document.querySelector(inputSel);
+    if (input) input.classList.add('has-error');
+  }
+}
+
+/**
+ * 清除所有内联错误提示
+ */
+function clearFieldErrors() {
+  document.querySelectorAll('.field-error').forEach((el) => {
+    el.textContent = '';
+    el.classList.remove('visible');
+  });
+  document.querySelectorAll('.has-error').forEach((el) => {
+    el.classList.remove('has-error');
+  });
 }
 
 // ========== 缓存管理 ==========
@@ -577,6 +711,13 @@ function displaySelectionResult(result) {
   els.linkDetails.style.display = 'none';
   els.aiCard.style.display = '';
   els.summaryContent.innerHTML = contentHtml;
+  currentSummaryText = result.summary || '';
+
+  // 更新字符计数
+  if (result.summary) {
+    els.tokenCount.textContent = `${result.summary.length} 字符`;
+    els.tokenCount.classList.add('visible');
+  }
 
   // 保存到历史记录（异步，不阻塞 UI）
   saveToHistory({
@@ -772,6 +913,11 @@ async function fetchModels() {
 async function runExtraction({ forceRefresh }) {
   abortController = new AbortController();
   let rafId = null;
+  // 清除历史/欢迎状态
+  els.historyBanner.style.display = 'none';
+  els.welcomeCard.style.display = 'none';
+  els.tokenCount.textContent = '';
+  els.tokenCount.classList.remove('visible');
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('无法获取当前标签页');
@@ -816,6 +962,9 @@ async function runExtraction({ forceRefresh }) {
         hideLoading();
         loadingHidden = true;
       }
+      // 更新实时字符计数
+      els.tokenCount.textContent = `${fullContent.length} 字符`;
+      els.tokenCount.classList.add('visible');
       if (!renderPending) {
         renderPending = true;
         rafId = requestAnimationFrame(() => {
@@ -884,6 +1033,10 @@ function renderPageInfo(pageInfo) {
 function renderSummary(summaryText) {
   currentSummaryText = summaryText;
   els.summaryContent.innerHTML = renderMarkdown(summaryText);
+  if (summaryText) {
+    els.tokenCount.textContent = `${summaryText.length} 字符`;
+    els.tokenCount.classList.add('visible');
+  }
 }
 
 // ========== UI 辅助 ==========
@@ -902,6 +1055,50 @@ function showTemporaryButtonFeedback(btn, originalText, feedbackText, feedbackCl
     btn.querySelector('span').textContent = originalText;
     btn.classList.remove(feedbackClass);
   }, UI.buttonFeedbackMs);
+}
+
+let toastTimer = null;
+
+/**
+ * 显示底部 Toast 提示
+ * @param {string} msg - 提示文字
+ * @param {string} [actionText] - 操作按钮文字（可选）
+ * @param {() => void} [actionCallback] - 操作按钮回调（可选）
+ */
+function showToast(msg, actionText, actionCallback) {
+  if (toastTimer) clearTimeout(toastTimer);
+
+  let html = escapeHtml(msg);
+  if (actionText && actionCallback) {
+    html += `<span class="toast-action" id="toastAction">${escapeHtml(actionText)}</span>`;
+  }
+
+  els.toast.innerHTML = html;
+  els.toast.style.display = '';
+  // 强制回流后添加 show class 触发动画
+  els.toast.offsetHeight;
+  els.toast.classList.add('show');
+
+  // 绑定操作按钮事件
+  if (actionText && actionCallback) {
+    const actionEl = els.toast.querySelector('#toastAction');
+    if (actionEl) {
+      actionEl.addEventListener('click', () => {
+        hideToast();
+        actionCallback();
+      });
+    }
+  }
+
+  toastTimer = setTimeout(hideToast, 3000);
+}
+
+function hideToast() {
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  els.toast.classList.remove('show');
+  setTimeout(() => {
+    els.toast.style.display = 'none';
+  }, 250);
 }
 
 // ========== Markdown 导出 ==========
@@ -954,6 +1151,10 @@ function hideAll() {
   showError('');
   els.pageInfoCard.style.display = 'none';
   els.aiCard.style.display = 'none';
+  els.historyBanner.style.display = 'none';
+  els.welcomeCard.style.display = 'none';
+  els.tokenCount.textContent = '';
+  els.tokenCount.classList.remove('visible');
 }
 
 // ========== 历史记录管理 ==========
@@ -1048,6 +1249,8 @@ async function renderHistoryList() {
 
 function loadHistoryEntry(entry) {
   hideAll();
+  els.historyBanner.style.display = '';
+  els.welcomeCard.style.display = 'none';
   if (entry.type === 'page' && entry.pageInfo) {
     renderPageInfo(entry.pageInfo);
     els.pageInfoCard.style.display = '';
@@ -1070,6 +1273,10 @@ function loadHistoryEntry(entry) {
     els.aiCard.style.display = '';
     els.summaryContent.innerHTML = contentHtml;
     currentSummaryText = entry.summary || '';
+    if (entry.summary) {
+      els.tokenCount.textContent = `${entry.summary.length} 字符`;
+      els.tokenCount.classList.add('visible');
+    }
   }
 }
 

@@ -231,6 +231,39 @@
           <span class="field-hint" id="modelHint"></span>
           <span class="field-error" data-field="model"></span>
         </div>
+        <!-- 展示方式 -->
+        <div class="form-group">
+          <label>展示方式</label>
+          <div class="mode-toggle" id="panelModeToggle">
+            <label class="mode-option" data-mode="side_panel">
+              <input type="radio" name="panelMode" value="side_panel">
+              <span class="mode-option-content">
+                <span class="mode-option-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="15" y="3" width="7" height="18" rx="1"/>
+                    <rect x="2" y="3" width="11" height="18" rx="1"/>
+                    <line x1="15" y1="9" x2="15" y2="15"/>
+                  </svg>
+                </span>
+                <span class="mode-option-label">侧边栏</span>
+                <span class="mode-option-desc">右侧滑出，不遮挡页面</span>
+              </span>
+            </label>
+            <label class="mode-option" data-mode="popup">
+              <input type="radio" name="panelMode" value="popup">
+              <span class="mode-option-content">
+                <span class="mode-option-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/>
+                    <polyline points="6 9 10 13 6 17"/>
+                  </svg>
+                </span>
+                <span class="mode-option-label">弹窗</span>
+                <span class="mode-option-desc">工具栏弹出，点击外部关闭</span>
+              </span>
+            </label>
+          </div>
+        </div>
         <!-- 高级参数 -->
         <div class="form-group">
           <label for="temperature">Temperature (随机性)</label>

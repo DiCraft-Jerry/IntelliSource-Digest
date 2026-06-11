@@ -46,6 +46,7 @@ export const STORAGE_KEYS = {
   contextMenuResult: 'contextMenuResult',
   contextMenuSelectionResult: 'contextMenuSelectionResult',
   analysisHistory: 'analysisHistory',
+  panelMode: 'panelMode',
 };
 
 // ========== 右键菜单 ID ==========

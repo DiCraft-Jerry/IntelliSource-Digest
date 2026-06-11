@@ -6,6 +6,57 @@ import { summarizePageInfoStream, summarizeSelectionStream } from '../utils/ai-t
 import { extractPageInfo } from '../utils/page-extractor.js';
 import { STORAGE_KEYS, MENU_IDS, TIMEOUTS, SIZES, UI, isRestrictedUrl } from '../utils/constants.js';
 
+// ========== 面板模式管理 ==========
+let currentPanelMode = 'side_panel';
+
+function configurePanelBehavior(mode) {
+  if (mode === 'popup') {
+    chrome.action.setPopup({ popup: 'src/popup/popup.html' }).catch(() => {});
+  } else {
+    // 侧边栏模式：清除 popup，显式关闭 openPanelOnActionClick
+    // 这样图标点击会触发 onClicked，由 SW 调用 sidePanel.open()
+    // 走 onClicked 路径才能正确传播用户手势，确保 tab.url 可解析
+    chrome.action.setPopup({ popup: '' }).catch(() => {});
+  }
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+  currentPanelMode = mode;
+}
+
+function openPanel(tab) {
+  if (!tab?.windowId) return;
+  if (currentPanelMode === 'popup') {
+    chrome.action.openPopup({ windowId: tab.windowId }).catch(() => {});
+  } else {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+  }
+}
+
+// 启动时读取偏好并配置
+(async () => {
+  try {
+    const { [STORAGE_KEYS.panelMode]: mode } = await chrome.storage.local.get([STORAGE_KEYS.panelMode]);
+    configurePanelBehavior(mode === 'popup' ? 'popup' : 'side_panel');
+  } catch {
+    configurePanelBehavior('side_panel');
+  }
+})();
+
+// 监听面板模式变更（用户在设置页切换后立即生效）
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+  const change = changes[STORAGE_KEYS.panelMode];
+  if (change?.newValue) {
+    configurePanelBehavior(change.newValue === 'popup' ? 'popup' : 'side_panel');
+  }
+});
+
+// ========== 点击工具栏图标 → 打开 Side Panel（安全回退） ==========
+chrome.action.onClicked.addListener((tab) => {
+  if (tab?.windowId) {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+  }
+});
+
 // ========== 注册右键菜单（顶层执行，确保 SW 重启后菜单仍存在） ==========
 // 先移除再创建，避免 SW 重启后因 ID 已存在而报错
 chrome.contextMenus.remove(MENU_IDS.page, () => {
@@ -33,8 +84,8 @@ chrome.contextMenus.remove(MENU_IDS.selection, () => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!tab?.id) return;
 
-  // ★ 在任何 await 之前打开 popup（用户手势在 await 后丢失）
-  tryOpenPopup();
+  // 在任何 await 之前打开 panel（用户手势在 await 后丢失）
+  openPanel(tab);
 
   if (info.menuItemId === MENU_IDS.page) {
     handleMenuClick(tab, {
@@ -170,20 +221,14 @@ function notifyError(tab, errorMsg) {
   }).catch(() => {});
 }
 
-// 点击通知 → 打开 popup
+// 点击通知 → 打开 Panel
 chrome.notifications.onClicked.addListener((notificationId) => {
   chrome.notifications.clear(notificationId);
-  chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-    if (tab?.id) {
-      chrome.action.openPopup();
-    }
-  }).catch(() => {});
+  if (notificationId) {
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (tab?.windowId) {
+        openPanel(tab);
+      }
+    }).catch(() => {});
+  }
 });
-
-// ========== 尝试打开 popup ==========
-
-function tryOpenPopup() {
-  chrome.action.openPopup().catch(() => {
-    // 无法打开时静默失败，用户可手动点击扩展图标
-  });
-}

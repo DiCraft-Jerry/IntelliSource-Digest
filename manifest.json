@@ -3,7 +3,7 @@
   "name": "智源摘读",
   "version": "1.0.0",
   "description": "IntelliSource Digest - 智能提取网页关键信息，AI 驱动的一键摘要工具",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "notifications"],
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "notifications", "sidePanel"],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
@@ -14,11 +14,13 @@
         "default": "Ctrl+Shift+S",
         "mac": "MacCtrl+Shift+S"
       },
-      "description": "打开智源摘读并分析当前页面"
+      "description": "打开智源摘读分析当前页面"
     }
   },
+  "side_panel": {
+    "default_path": "src/popup/popup.html"
+  },
   "action": {
-    "default_popup": "src/popup/popup.html",
     "default_title": "智源摘读"
   }
 }

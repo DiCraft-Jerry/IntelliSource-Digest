@@ -74,6 +74,8 @@ const els = {
   tokenCount: document.getElementById('tokenCount'),
   // Toast
   toast: document.getElementById('toast'),
+  // 展示方式切换
+  panelModeToggle: document.getElementById('panelModeToggle'),
 };
 
 // ========== 初始化 ==========
@@ -232,6 +234,8 @@ function bindEvents() {
     }
     els.saveSettingsBtn.disabled = true;
     try {
+      const oldConfig = await loadConfig();
+      const modeChanged = oldConfig.panelMode !== config.panelMode;
       await saveConfig(config);
       switchToMain();
       // 尝试展示缓存；若无缓存则显示空状态
@@ -244,15 +248,15 @@ function bindEvents() {
           els.pageInfoCard.style.display = '';
           renderSummary(cached.summary);
           els.aiCard.style.display = '';
-          showToast('设置已保存');
+          showToast(modeChanged ? '展示方式已更新，重新打开扩展后生效' : '设置已保存');
         } else {
           hideAll();
-          showToast('设置已保存，点击"重新抓取"开始分析', '重新抓取', () => {
+          showToast(modeChanged ? '展示方式已更新，重新打开扩展后生效' : '设置已保存，点击"重新抓取"开始分析', modeChanged ? undefined : '重新抓取', modeChanged ? undefined : () => {
             runExtraction({ forceRefresh: true });
           });
         }
       } else {
-        showToast('设置已保存');
+        showToast(modeChanged ? '展示方式已更新，重新打开扩展后生效' : '设置已保存');
       }
     } finally {
       els.saveSettingsBtn.disabled = false;
@@ -400,11 +404,15 @@ async function loadConfig() {
   if (base.temperature === undefined) base.temperature = DEFAULTS.temperature;
   if (base.maxTokens === undefined) base.maxTokens = DEFAULTS.maxTokens;
   if (base.systemPrompt === undefined) base.systemPrompt = DEFAULTS.systemPrompt;
+  if (base.panelMode === undefined) base.panelMode = 'side_panel';
   return base;
 }
 
 async function saveConfig(config) {
-  await chrome.storage.local.set({ [STORAGE_KEYS.apiConfig]: config });
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.apiConfig]: config,
+    [STORAGE_KEYS.panelMode]: config.panelMode || 'side_panel',
+  });
   showError('');
 }
 
@@ -435,6 +443,7 @@ function getConfigFromForm() {
     temperature: isNaN(temperature) ? DEFAULTS.temperature : temperature,
     maxTokens: isNaN(maxTokens) ? DEFAULTS.maxTokens : maxTokens,
     systemPrompt: els.systemPrompt.value.trim(),
+    panelMode: document.querySelector('input[name="panelMode"]:checked')?.value || 'side_panel',
   };
 }
 
@@ -499,6 +508,9 @@ function applyConfigToForm(config) {
   els.temperatureRange.value = temperature;
   els.maxTokens.value = config.maxTokens ?? DEFAULTS.maxTokens;
   els.systemPrompt.value = config.systemPrompt || '';
+  // 展示方式切换
+  const modeRadio = document.querySelector(`input[name="panelMode"][value="${config.panelMode || 'side_panel'}"]`);
+  if (modeRadio) modeRadio.checked = true;
 }
 
 function validateConfig(config) {

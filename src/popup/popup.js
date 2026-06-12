@@ -83,6 +83,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   const config = await loadConfig();
   applyConfigToForm(config);
+  // 标记当前面板模式（侧边栏模式下隐藏自定义 header，Chrome 自带标题）
+  document.body.dataset.panelMode = config.panelMode || 'side_panel';
 
   // 清除当前标签页 Badge（用户已打开 popup 查看结果）
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

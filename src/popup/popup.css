@@ -145,6 +145,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 侧边栏模式下隐藏标题文字（Chrome 自带标题栏已显示扩展名） */
+body[data-panel-mode="side_panel"] .header h1 {
+  display: none;
+}
+
 /* ====== 头部 ====== */
 .header {
   display: flex;

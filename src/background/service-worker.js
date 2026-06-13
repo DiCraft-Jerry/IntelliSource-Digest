@@ -202,9 +202,11 @@ function clearBadge(tabId) {
 
 // ========== 通知辅助函数 ==========
 
+const NOTIFICATION_ID_PREFIX = 'intellisource-';
+
 function notifyComplete(tab, title, summary) {
   const preview = (summary || '').replace(/\n/g, ' ').substring(0, SIZES.summaryPreviewMax);
-  chrome.notifications.create({
+  chrome.notifications.create(NOTIFICATION_ID_PREFIX + Date.now(), {
     type: 'basic',
     iconUrl: 'assets/icons/icon128.png',
     title: '智源摘读 · 分析完成',
@@ -213,7 +215,7 @@ function notifyComplete(tab, title, summary) {
 }
 
 function notifyError(tab, errorMsg) {
-  chrome.notifications.create({
+  chrome.notifications.create(NOTIFICATION_ID_PREFIX + Date.now(), {
     type: 'basic',
     iconUrl: 'assets/icons/icon128.png',
     title: '智源摘读 · 分析失败',

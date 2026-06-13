@@ -91,46 +91,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (tab?.id) {
     chrome.action.setBadgeText({ text: '', tabId: tab.id }).catch(() => {});
   }
-  // 清除所有通知
+  // 仅清除本扩展发出的通知（以 intellisource- 为前缀）
   chrome.notifications.getAll((notifications) => {
-    Object.keys(notifications).forEach((id) => chrome.notifications.clear(id));
+    Object.keys(notifications).forEach((id) => {
+      if (id.startsWith('intellisource-')) chrome.notifications.clear(id);
+    });
   });
 
   // 优先检查右键菜单预计算结果（来自 Service Worker 后台分析）
-  const contextResult = await loadContextMenuResultRaw();
-  if (contextResult) {
-    if (contextResult.status === 'analyzing') {
-      hideAll();
-      showLoading('正在 AI 分析中，请稍候...');
-      listenForStorageResult(STORAGE_KEYS.contextMenuResult, displayContextMenuResult);
-      await renderHistoryList();
-      return;
-    }
-    if (contextResult.status === 'done') {
-      displayContextMenuResult(contextResult);
-      await chrome.storage.session.remove([STORAGE_KEYS.contextMenuResult]).catch(() => {});
-      await renderHistoryList();
-      return;
-    }
-  }
-
-  // 检查选中文字右键菜单预计算结果
-  const selectionResult = await loadSelectionResultRaw();
-  if (selectionResult) {
-    if (selectionResult.status === 'analyzing') {
-      hideAll();
-      showLoading('正在 AI 分析中，请稍候...');
-      listenForStorageResult(STORAGE_KEYS.contextMenuSelectionResult, displaySelectionResult);
-      await renderHistoryList();
-      return;
-    }
-    if (selectionResult.status === 'done') {
-      displaySelectionResult(selectionResult);
-      await chrome.storage.session.remove([STORAGE_KEYS.contextMenuSelectionResult]).catch(() => {});
-      await renderHistoryList();
-      return;
-    }
-  }
+  if (await processMenuResult(STORAGE_KEYS.contextMenuResult, displayContextMenuResult)) return;
+  if (await processMenuResult(STORAGE_KEYS.contextMenuSelectionResult, displaySelectionResult)) return;
 
   // 提前渲染历史记录，避免等待 AI 分析期间显示为空
   await renderHistoryList();
@@ -605,21 +575,43 @@ async function saveCache(tab, pageInfo, summary) {
 
 /**
  * 读取右键菜单预计算结果原始数据（不消费，由调用方决定是否清除）
+ * @param {string} key - storage.session 中的键名
  * @returns {Promise<object | null>}
  */
-async function loadContextMenuResultRaw() {
+async function loadMenuResultRaw(key) {
   try {
-    const { [STORAGE_KEYS.contextMenuResult]: result } = await chrome.storage.session.get([STORAGE_KEYS.contextMenuResult]);
-    return result || null;
+    const result = await chrome.storage.session.get([key]);
+    return result[key] || null;
   } catch {
     return null;
   }
 }
 
 /**
- * 展示右键菜单预计算结果
- * @param {{ pageInfo: object, summary: string, error: string }} result
+ * 处理右键菜单预计算结果（analyzing 监听 / done 展示）
+ * @param {string} key - storage.session 中的键名
+ * @param {(result: object) => void} displayFn - 展示回调
+ * @returns {Promise<boolean>} 是否已处理（有结果返回 true，无结果返回 false）
  */
+async function processMenuResult(key, displayFn) {
+  const result = await loadMenuResultRaw(key);
+  if (!result) return false;
+
+  if (result.status === 'analyzing') {
+    hideAll();
+    showLoading('正在 AI 分析中，请稍候...');
+    listenForStorageResult(key, displayFn);
+    await renderHistoryList();
+    return true;
+  }
+  if (result.status === 'done') {
+    displayFn(result);
+    await chrome.storage.session.remove([key]).catch(() => {});
+    await renderHistoryList();
+    return true;
+  }
+  return false;
+}
 function displayContextMenuResult(result) {
   hideAll();
   if (result.pageInfo) {
@@ -677,20 +669,7 @@ function listenForStorageResult(storageKey, displayFn) {
   setTimeout(cleanup, TIMEOUTS.storageListener);
 }
 
-// ========== 选中文字右键菜单结果处理 ==========
-
-/**
- * 读取选中文字右键菜单预计算结果原始数据
- * @returns {Promise<object | null>}
- */
-async function loadSelectionResultRaw() {
-  try {
-    const { [STORAGE_KEYS.contextMenuSelectionResult]: result } = await chrome.storage.session.get([STORAGE_KEYS.contextMenuSelectionResult]);
-    return result || null;
-  } catch {
-    return null;
-  }
-}
+// ========== 选中文字右键菜单结果展示 ==========
 
 /**
  * 展示选中文字右键菜单分析结果

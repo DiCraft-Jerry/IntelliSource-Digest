@@ -153,12 +153,12 @@ export function renderMarkdown(text) {
   // 5. 合并所有块
   let result = processed.join('');
 
-  // 6. 将连续有序列表项包入 <ol>
-  result = result.replace(/((?:<!--OL--><li>.*?<\/li>)+)/g, (match) => {
-    return '<ol>' + match.replace(/<!--OL-->/g, '') + '</ol>';
-  });
-  // 将连续无序列表项包入 <ul>
-  result = result.replace(/((?:<li>.*?<\/li>)+)/g, (match) => {
+  // 6. 将连续有序列表项包入 <ol>，连续无序列表项包入 <ul>
+  // 单次匹配避免嵌套：有序项带 <!--OL--> 前缀，无序项不带
+  result = result.replace(/((?:<!--OL-->)?<li>.*?<\/li>)+/g, (match) => {
+    if (match.startsWith('<!--OL-->')) {
+      return '<ol>' + match.replace(/<!--OL-->/g, '') + '</ol>';
+    }
     return '<ul>' + match + '</ul>';
   });
 

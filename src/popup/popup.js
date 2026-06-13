@@ -136,37 +136,7 @@ function bindEvents() {
 
   // 供应商切换 → 自动填充 URL 和模型
   els.provider.addEventListener('change', () => {
-    const providerKey = els.provider.value;
-    const provider = PROVIDERS[providerKey];
-
-    if (providerKey === 'custom') {
-      // 切换到自定义：显示基础地址 + 路径字段，隐藏预设只读 URL
-      els.presetUrlGroup.style.display = 'none';
-      els.customUrlGroup.style.display = '';
-      els.customBaseUrl.value = '';
-      els.apiPathPreset.value = '/v1/chat/completions';
-      els.customApiPath.style.display = 'none';
-      els.customApiPath.value = '';
-      els.model.value = '';
-      els.modelSelect.style.display = 'none';
-      els.modelHint.textContent = '';
-      els.urlHint.textContent = '';
-      els.urlHint.className = 'field-hint';
-      els.testConnGroup.style.display = '';
-      clearTestResult();
-    } else {
-      // 预设供应商：显示只读完整 URL，隐藏自定义字段
-      els.presetUrlGroup.style.display = '';
-      els.customUrlGroup.style.display = 'none';
-      els.apiUrl.value = provider.url;
-      els.model.value = provider.model;
-      els.modelSelect.style.display = 'none';
-      els.modelHint.textContent = '';
-      els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址，可直接修改`;
-      els.urlHint.className = 'field-hint success';
-      els.testConnGroup.style.display = 'none';
-      clearTestResult();
-    }
+    configureProviderFields(els.provider.value);
   });
 
   // 路径预设切换：选「自定义路径...」时显示手动输入框
@@ -419,60 +389,76 @@ function getConfigFromForm() {
   };
 }
 
+/**
+ * 根据供应商配置 UI 字段：URL 组显隐、预设 URL/模型填充、提示和测试按钮
+ * 在 provider 切换和 applyConfigToForm 中复用
+ * @param {string} providerKey
+ */
+function configureProviderFields(providerKey) {
+  const provider = PROVIDERS[providerKey];
+  clearTestResult();
+  els.modelSelect.style.display = 'none';
+  els.modelHint.textContent = '';
+
+  if (providerKey === 'custom') {
+    els.presetUrlGroup.style.display = 'none';
+    els.customUrlGroup.style.display = '';
+    els.customBaseUrl.value = '';
+    els.apiPathPreset.value = '/v1/chat/completions';
+    els.customApiPath.style.display = 'none';
+    els.customApiPath.value = '';
+    els.model.value = '';
+    els.urlHint.textContent = '';
+    els.urlHint.className = 'field-hint';
+    els.customUrlHint.textContent = '';
+    els.customUrlHint.className = 'field-hint';
+    els.testConnGroup.style.display = '';
+  } else {
+    els.presetUrlGroup.style.display = '';
+    els.customUrlGroup.style.display = 'none';
+    els.apiUrl.value = provider?.url || '';
+    els.model.value = provider?.model || '';
+    els.urlHint.textContent = provider ? `✓ 已自动填充 ${provider.name} 的 API 地址，可直接修改` : '';
+    els.urlHint.className = provider ? 'field-hint success' : 'field-hint';
+    els.testConnGroup.style.display = 'none';
+  }
+}
+
 function applyConfigToForm(config) {
   els.provider.value = config.provider || DEFAULTS.provider;
   els.apiKey.value = config.apiKey || '';
 
-  if (config.provider && config.provider !== 'custom') {
-    // 预设供应商：显示只读完整 URL
-    els.presetUrlGroup.style.display = '';
-    els.customUrlGroup.style.display = 'none';
-    const provider = PROVIDERS[config.provider];
-    if (provider) {
-      els.apiUrl.value = provider.url;
-      els.model.value = config.model || provider.model;
-      els.modelSelect.style.display = 'none';
-      els.modelHint.textContent = '';
-      els.urlHint.textContent = `✓ 已自动填充 ${provider.name} 的 API 地址，可直接修改`;
-      els.urlHint.className = 'field-hint success';
-      els.testConnGroup.style.display = 'none';
-      clearTestResult();
-      return;
-    }
-  }
+  // 复用统一的供应商字段配置
+  configureProviderFields(config.provider || DEFAULTS.provider);
 
-  // 自定义模式：从完整 URL 反拆分出基础地址和路径
-  els.presetUrlGroup.style.display = 'none';
-  els.customUrlGroup.style.display = '';
-  const fullUrl = config.apiUrl || '';
-  let base = fullUrl;
-  let path = '/v1/chat/completions';
-  try {
-    const url = new URL(fullUrl);
-    base = `${url.protocol}//${url.host}`;
-    path = url.pathname + url.search + url.hash;
-    if (!path || path === '/') path = '/v1/chat/completions';
-  } catch {
-    // URL 解析失败，把整个字符串当基础地址
-  }
-  els.customBaseUrl.value = base;
-  // 匹配预设路径
-  const presetOption = els.apiPathPreset.querySelector(`option[value="${path}"]`);
-  if (presetOption) {
-    els.apiPathPreset.value = path;
-    els.customApiPath.style.display = 'none';
+  if (config.provider && config.provider !== 'custom') {
+    // 预设供应商：覆盖 model 为用户保存的值
+    if (config.model) els.model.value = config.model;
   } else {
-    els.apiPathPreset.value = '__custom__';
-    els.customApiPath.style.display = '';
-    els.customApiPath.value = path;
+    // 自定义模式：从完整 URL 反拆分出基础地址和路径
+    const fullUrl = config.apiUrl || '';
+    let base = fullUrl;
+    let path = '/v1/chat/completions';
+    try {
+      const url = new URL(fullUrl);
+      base = `${url.protocol}//${url.host}`;
+      path = url.pathname + url.search + url.hash;
+      if (!path || path === '/') path = '/v1/chat/completions';
+    } catch {
+      // URL 解析失败，把整个字符串当基础地址
+    }
+    els.customBaseUrl.value = base;
+    const presetOption = els.apiPathPreset.querySelector(`option[value="${path}"]`);
+    if (presetOption) {
+      els.apiPathPreset.value = path;
+      els.customApiPath.style.display = 'none';
+    } else {
+      els.apiPathPreset.value = '__custom__';
+      els.customApiPath.style.display = '';
+      els.customApiPath.value = path;
+    }
+    els.model.value = config.model || '';
   }
-  els.model.value = config.model || '';
-  els.modelSelect.style.display = 'none';
-  els.modelHint.textContent = '';
-  els.customUrlHint.textContent = '';
-  els.customUrlHint.className = 'field-hint';
-  els.testConnGroup.style.display = '';
-  clearTestResult();
 
   // 高级参数
   const temperature = config.temperature ?? DEFAULTS.temperature;
@@ -557,10 +543,10 @@ async function checkCache(tab) {
     ) {
       return { pageInfo: cachedResult.pageInfo, summary: cachedResult.summary };
     }
-  } catch {
-    // storage.session 不可用时静默降级
+  } catch (e) {
+    console.warn('Cache operation failed:', e);
+    return null;
   }
-  return null;
 }
 
 async function saveCache(tab, pageInfo, summary) {
@@ -568,8 +554,8 @@ async function saveCache(tab, pageInfo, summary) {
     await chrome.storage.session.set({
       [STORAGE_KEYS.cachedResult]: { tabId: tab.id, url: tab.url, pageInfo, summary },
     });
-  } catch {
-    // 写入失败静默忽略
+  } catch (e) {
+    console.warn('saveCache failed:', e);
   }
 }
 
@@ -582,9 +568,9 @@ async function loadMenuResultRaw(key) {
   try {
     const result = await chrome.storage.session.get([key]);
     return result[key] || null;
-  } catch {
+  } catch (e) {
+    console.warn('loadMenuResultRaw failed:', key, e);
     return null;
-  }
 }
 
 /**
@@ -815,21 +801,11 @@ async function testConnection() {
   }
 }
 
-/** 从 Chat API 地址推导出 /v1/models 端点 */
-function getModelsUrl(apiUrl) {
-  try {
-    const url = new URL(apiUrl);
-    return `${url.protocol}//${url.host}/v1/models`;
-  } catch {
-    return null;
-  }
-}
-
-/** 获取可用模型列表，填充到 <datalist> 供输入框自动补全 */
+/** 获取可用模型列表，优先使用供应商预设的 modelsUrl */
 async function fetchModels() {
   const config = getConfigFromForm();
-  const apiUrl = config.apiUrl;
   const apiKey = config.apiKey;
+  const provider = PROVIDERS[config.provider];
 
   if (!apiKey) {
     els.modelHint.textContent = '请先填写 API Key';
@@ -837,11 +813,17 @@ async function fetchModels() {
     return;
   }
 
-  const modelsUrl = getModelsUrl(apiUrl);
-  if (!modelsUrl) {
-    els.modelHint.textContent = '无法解析 API 地址';
-    els.modelHint.className = 'field-hint warning';
-    return;
+  // 优先使用供应商预设的 modelsUrl，自定义供应商从 chat URL 推导
+  let modelsUrl = provider?.modelsUrl || '';
+  if (!modelsUrl && config.provider === 'custom') {
+    try {
+      const url = new URL(config.apiUrl);
+      modelsUrl = `${url.protocol}//${url.host}/v1/models`;
+    } catch {
+      els.modelHint.textContent = '无法解析 API 地址';
+      els.modelHint.className = 'field-hint warning';
+      return;
+    }
   }
   if (!navigator.onLine) {
     els.modelHint.textContent = '无网络连接，请检查网络';
@@ -1116,8 +1098,8 @@ function handleExport() {
 
     // 反馈
     showTemporaryButtonFeedback(els.exportBtn, '导出', '已导出', 'exported');
-  } catch {
-    // 静默失败
+  } catch (e) {
+    console.warn('Export failed:', e);
   }
 }
 
@@ -1163,8 +1145,8 @@ async function saveToHistory(entry) {
     history.unshift(entry);
     if (history.length > SIZES.historyMax) history.length = SIZES.historyMax;
     await chrome.storage.session.set({ [STORAGE_KEYS.analysisHistory]: history });
-  } catch {
-    // 写入失败静默忽略
+  } catch (e) {
+    console.warn('saveToHistory failed:', e);
   }
 }
 
@@ -1172,7 +1154,8 @@ async function getHistory() {
   try {
     const result = await chrome.storage.session.get([STORAGE_KEYS.analysisHistory]);
     return result[STORAGE_KEYS.analysisHistory] || [];
-  } catch {
+  } catch (e) {
+    console.warn('getHistory failed:', e);
     return [];
   }
 }
@@ -1184,8 +1167,8 @@ async function deleteHistoryEntry(index) {
       history.splice(index, 1);
       await chrome.storage.session.set({ [STORAGE_KEYS.analysisHistory]: history });
     }
-  } catch {
-    // 删除失败静默忽略
+  } catch (e) {
+    console.warn('deleteHistoryEntry failed:', e);
   }
   await renderHistoryList();
 }

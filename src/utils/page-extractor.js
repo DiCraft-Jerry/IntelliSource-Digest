@@ -1,4 +1,4 @@
-import { TIMEOUTS } from './constants.js';
+import { TIMEOUTS, SIZES } from './constants.js';
 
 /**
  * 从指定标签页提取页面信息（在 popup 和 SW 中复用）
@@ -22,6 +22,11 @@ export async function extractPageInfo(tabId) {
 /**
  * 页面信息提取函数（被注入到目标页面中执行）
  * 独立声明，确保 Chrome scripting.executeScript 可正确序列化
+ *
+ * 注意：此函数被序列化注入，无法 import 常量。
+ * 以下硬编码数字对应 constants.js 中的 SIZES：
+ *   bodyTextMax(4000) tableMax(5) tableHeaderCellMax(80)
+ *   tableBodyRowMax(20) tableCellMax(120) linkTextMax(150) linkExtractionMax(200)
  */
 export function extractPageInfoFunc() {
   // ---- 标题 ----

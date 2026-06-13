@@ -46,8 +46,8 @@ function buildPrompt(pageInfo) {
     tablesSection = `## 表格数据（共 ${tables.length} 个表格）\n${tablesText}`;
   }
 
-  // 取前 60 个链接以防 token 超限
-  const topLinks = links.slice(0, 60);
+  // 取前 N 个链接以防 token 超限（数量由 SIZES.promptLinkMax 控制）
+  const topLinks = links.slice(0, SIZES.promptLinkMax);
   const linksText = topLinks
     .map((l, i) => `${i + 1}. [${l.text || '无文字'}](${l.href})`)
     .join('\n');

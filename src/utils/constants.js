@@ -28,7 +28,8 @@ export const SIZES = {
   linkDisplayMax: 100,
   linkExtractionMax: 200,
   tableMax: 5,
-  errorPreviewMax: 300,
+  tableHeaderCellMax: 80,
+  tableBodyRowMax: 20,
   tableCellMax: 120,
   linkTextMax: 150,
   titlePrefixMax: 80,
@@ -37,6 +38,8 @@ export const SIZES = {
   linkFallbackMax: 200,
   historyMax: 10,
   systemPromptMax: 4000,
+  promptLinkMax: 60,
+  errorPreviewMax: 300,
 };
 
 // ========== 存储键 ==========
@@ -79,31 +82,37 @@ export const PROVIDERS = {
   openai: {
     name: 'OpenAI',
     url: 'https://api.openai.com/v1/chat/completions',
+    modelsUrl: 'https://api.openai.com/v1/models',
     model: 'gpt-4o',
   },
   deepseek: {
     name: 'DeepSeek',
     url: 'https://api.deepseek.com/v1/chat/completions',
+    modelsUrl: 'https://api.deepseek.com/v1/models',
     model: 'deepseek-chat',
   },
   qwen: {
     name: '通义千问',
     url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    modelsUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/models',
     model: 'qwen-plus',
   },
   moonshot: {
     name: 'Moonshot',
     url: 'https://api.moonshot.cn/v1/chat/completions',
+    modelsUrl: 'https://api.moonshot.cn/v1/models',
     model: 'moonshot-v1-8k',
   },
   zhipu: {
     name: '智谱 GLM',
     url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    modelsUrl: 'https://open.bigmodel.cn/api/paas/v4/models',
     model: 'glm-4',
   },
   custom: {
     name: '自定义',
     url: '',
+    modelsUrl: '',
     model: '',
   },
 };

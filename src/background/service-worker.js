@@ -6,6 +6,21 @@ import { summarizePageInfoStream, summarizeSelectionStream } from '../utils/ai-t
 import { extractPageInfo } from '../utils/page-extractor.js';
 import { STORAGE_KEYS, MENU_IDS, TIMEOUTS, SIZES, UI, isRestrictedUrl } from '../utils/constants.js';
 
+// ========== AI 配置辅助 ==========
+
+/**
+ * 加载并校验 API 配置，供右键菜单页内分析共用
+ * @returns {Promise<object>} apiConfig
+ * @throws {Error} 未配置 API 时抛出
+ */
+async function requireApiConfig() {
+  const { apiConfig } = await chrome.storage.local.get([STORAGE_KEYS.apiConfig]);
+  if (!apiConfig?.apiUrl || !apiConfig?.apiKey || !apiConfig?.model) {
+    throw new Error('请先点击扩展图标配置 AI API 参数');
+  }
+  return apiConfig;
+}
+
 // ========== 面板模式管理 ==========
 let currentPanelMode = 'side_panel';
 
@@ -91,10 +106,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     handleMenuClick(tab, {
       storageKey: STORAGE_KEYS.contextMenuResult,
       extractAndSummarize: async (tab) => {
-        const { apiConfig } = await chrome.storage.local.get([STORAGE_KEYS.apiConfig]);
-        if (!apiConfig?.apiUrl || !apiConfig?.apiKey || !apiConfig?.model) {
-          throw new Error('请先点击扩展图标配置 AI API 参数');
-        }
+        const apiConfig = await requireApiConfig();
         const pageInfo = await extractPageInfo(tab.id);
         const summary = await summarizePageInfoStream(pageInfo, apiConfig, () => {});
         return { pageInfo, summary };
@@ -110,10 +122,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     handleMenuClick(tab, {
       storageKey: STORAGE_KEYS.contextMenuSelectionResult,
       extractAndSummarize: async (tab, selectedText) => {
-        const { apiConfig } = await chrome.storage.local.get([STORAGE_KEYS.apiConfig]);
-        if (!apiConfig?.apiUrl || !apiConfig?.apiKey || !apiConfig?.model) {
-          throw new Error('请先点击扩展图标配置 AI API 参数');
-        }
+        const apiConfig = await requireApiConfig();
         if (!selectedText || !selectedText.trim()) {
           throw new Error('未获取到选中的文字');
         }
@@ -177,14 +186,15 @@ async function handleMenuClick(tab, opts) {
 async function storeStorageResult(key, data) {
   try {
     await chrome.storage.session.set({ [key]: data });
-  } catch { /* 写入失败静默忽略 */ }
+  } catch (e) { console.warn('storeStorageResult failed:', key, e); }
 }
 
 async function getStorageResult(key) {
   try {
     const result = await chrome.storage.session.get([key]);
     return result[key] || null;
-  } catch {
+  } catch (e) {
+    console.warn('getStorageResult failed:', key, e);
     return null;
   }
 }
@@ -192,12 +202,12 @@ async function getStorageResult(key) {
 // ========== Badge 辅助函数 ==========
 
 function setBadge(tabId, text, color) {
-  chrome.action.setBadgeText({ text, tabId }).catch(() => {});
-  chrome.action.setBadgeBackgroundColor({ color, tabId }).catch(() => {});
+  chrome.action.setBadgeText({ text, tabId }).catch((e) => console.warn('setBadgeText failed:', e));
+  chrome.action.setBadgeBackgroundColor({ color, tabId }).catch((e) => console.warn('setBadgeBackgroundColor failed:', e));
 }
 
 function clearBadge(tabId) {
-  chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+  chrome.action.setBadgeText({ text: '', tabId }).catch((e) => console.warn('clearBadge failed:', e));
 }
 
 // ========== 通知辅助函数 ==========
